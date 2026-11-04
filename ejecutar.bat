@@ -1,6 +1,6 @@
 @echo off
 title LegadoVivo - Preservacion de Memoria (Kivy Android)
-cd /d "d:\Documentos\legado_vivo"
+cd /d "%~dp0"
 echo ========================================================
 echo   Iniciando LegadoVivo (Segundo Incremento Movil)
 echo ========================================================

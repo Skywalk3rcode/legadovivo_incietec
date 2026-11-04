@@ -1,6 +1,6 @@
-# Dependencias para LegadoVivo - Segundo Incremento (Python Móvil)
+# Dependencias para LegadoVivo - Segundo Incremento (Python Movil)
+# Runtime:
 kivy>=2.3.0
-plyer>=2.1.0
-pillow>=10.0.0
+# Desarrollo / pruebas:
 pytest>=8.0.0
-
+# Nota: plyer y pillow se eliminaron porque el codigo no los importa en ninguna parte.
