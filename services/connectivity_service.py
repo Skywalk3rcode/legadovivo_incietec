@@ -44,20 +44,36 @@ class ConnectivityService:
     def check_android_connectivity(self) -> bool:
         """
         Consulta el estado de red nativo de Android mediante PyJNIus / ConnectivityManager.
+        Usa la API moderna (getActiveNetwork + NetworkCapabilities, Android 5+) y
+        conserva la API clásica como respaldo para dispositivos antiguos.
         """
         try:
             from jnius import autoclass
             PythonActivity = autoclass("org.kivy.android.PythonActivity")
             Context = autoclass("android.content.Context")
+            ConnectivityManager = autoclass("android.net.ConnectivityManager")
             activity = PythonActivity.mActivity
             conn_mgr = activity.getSystemService(Context.CONNECTIVITY_SERVICE)
-            active_network = conn_mgr.getActiveNetworkInfo()
-            return active_network is not None and active_network.isConnected()
+
+            # API moderna: red activa + capacidades (no deprecada)
+            active_network = conn_mgr.getActiveNetwork()
+            if active_network is not None:
+                capabilities = conn_mgr.getNetworkCapabilities(active_network)
+                if capabilities is not None:
+                    return bool(
+                        capabilities.hasCapability(
+                            ConnectivityManager.NET_CAPABILITY_INTERNET
+                        )
+                    )
+
+            # Respaldo: API clásica (obsoleta pero todavía disponible)
+            active_info = conn_mgr.getActiveNetworkInfo()
+            return active_info is not None and active_info.isConnected()
         except Exception:
             # Fallback a verificación mediante socket si JNI no está disponible en el entorno
             return self.check_socket_connectivity()
 
-    def check_socket_connectivity(self, host: str = "8.8.8.8", port: int = 53, timeout: float = 1.0) -> bool:
+    def check_socket_connectivity(self, host: str = "8.8.8.8", port: int = 53, timeout: float = 0.5) -> bool:
         """
         Verificación de conectividad agnóstica mediante intento de conexión TCP con timeout breve.
         """

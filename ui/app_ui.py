@@ -4,11 +4,13 @@ Integra la barra de estado superior, el gestor de pantallas y la barra de navega
 """
 
 from typing import Optional
+from threading import Thread
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.screenmanager import ScreenManager, SlideTransition
 from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.clock import Clock
+from kivy.metrics import dp
 from kivy.graphics import Color, Rectangle, RoundedRectangle
 
 from ui.screens.library_screen import LibraryScreen
@@ -72,6 +74,12 @@ class MainMobileLayout(BoxLayout):
         # 4. Barra de Navegación Inferior (Bottom Navigation)
         self._build_bottom_nav()
 
+        # Estado de conectividad: comprobación en hilo secundario + caché de resultados.
+        # (Nunca se bloquea el hilo de interfaz con sockets o JNI.)
+        self._conn_summary: Optional[dict] = None
+        self._conn_check_running = False
+        self._conn_generation = 0
+
         # Programar verificación periódica de conectividad cada 3 segundos
         Clock.schedule_interval(lambda dt: self.update_connectivity_status(), 3.0)
         # Actualización inicial inmediata
@@ -86,9 +94,9 @@ class MainMobileLayout(BoxLayout):
         top_bar = BoxLayout(
             orientation="horizontal",
             size_hint_y=None,
-            height=56,
-            padding=[16, 8, 16, 8],
-            spacing=10
+            height=dp(56),
+            padding=[dp(16), dp(8), dp(16), dp(8)],
+            spacing=dp(10)
         )
         with top_bar.canvas.before:
             Color(0.1, 0.22, 0.45, 1)  # Azul Índigo Profundo
@@ -129,7 +137,7 @@ class MainMobileLayout(BoxLayout):
             background_color=[0.18, 0.35, 0.65, 1],
             color=[1, 1, 1, 1],
             size_hint=(None, None),
-            size=(76, 36)
+            size=(dp(76), dp(36))
         )
         btn_info.bind(on_release=lambda x: DisclaimerInfoDialog().open())
         top_bar.add_widget(btn_info)
@@ -141,9 +149,9 @@ class MainMobileLayout(BoxLayout):
         self.banner_box = BoxLayout(
             orientation="horizontal",
             size_hint_y=None,
-            height=34,
-            padding=[14, 4, 14, 4],
-            spacing=8
+            height=dp(34),
+            padding=[dp(14), dp(4), dp(14), dp(4)],
+            spacing=dp(8)
         )
         with self.banner_box.canvas.before:
             self.banner_color = Color(0.92, 0.96, 0.92, 1)
@@ -172,7 +180,7 @@ class MainMobileLayout(BoxLayout):
             background_color=[0.85, 0.88, 0.92, 1],
             color=[0.2, 0.25, 0.35, 1],
             size_hint=(None, 1),
-            width=110
+            width=dp(110)
         )
         self.btn_toggle_sim.bind(on_release=self.toggle_offline_simulation)
         self.banner_box.add_widget(self.btn_toggle_sim)
@@ -184,9 +192,9 @@ class MainMobileLayout(BoxLayout):
         nav_box = BoxLayout(
             orientation="horizontal",
             size_hint_y=None,
-            height=62,
-            padding=[12, 6, 12, 6],
-            spacing=8
+            height=dp(62),
+            padding=[dp(12), dp(6), dp(12), dp(6)],
+            spacing=dp(8)
         )
         with nav_box.canvas.before:
             Color(1, 1, 1, 1)  # Blanco puro
@@ -231,8 +239,44 @@ class MainMobileLayout(BoxLayout):
         self.add_widget(nav_box)
 
     def update_connectivity_status(self):
+        """
+        Aplica el último resultado en caché a la barra y lanza una nueva
+        comprobación en segundo plano (nunca bloquea el hilo de interfaz).
+        """
+        if self._conn_summary is not None:
+            self._apply_connectivity_summary(self._conn_summary)
+        self._refresh_connectivity()
+
+    def _refresh_connectivity(self):
+        """Ejecuta get_status_summary() en un hilo demonio y entrega el resultado por Clock."""
+        if self._conn_check_running:
+            return
+        self._conn_check_running = True
+        generation = self._conn_generation
+
+        def _worker():
+            try:
+                summary = self.connectivity.get_status_summary()
+            except Exception:
+                summary = None
+            Clock.schedule_once(
+                lambda dt: self._on_connectivity_result(generation, summary), 0
+            )
+
+        Thread(target=_worker, daemon=True).start()
+
+    def _on_connectivity_result(self, generation: int, summary: Optional[dict]):
+        if generation != self._conn_generation:
+            # Resultado obsoleto: el estado cambió mientras se comprobaba.
+            return
+        self._conn_check_running = False
+        if summary is None:
+            return
+        self._conn_summary = summary
+        self._apply_connectivity_summary(summary)
+
+    def _apply_connectivity_summary(self, summary: dict):
         """Actualiza el texto y colores de la barra de conectividad."""
-        summary = self.connectivity.get_status_summary()
         is_conn = summary["is_connected"]
         is_sim = summary["is_simulated"]
 
@@ -253,7 +297,27 @@ class MainMobileLayout(BoxLayout):
     def toggle_offline_simulation(self, instance):
         """Alterna el modo simulado de desconexión."""
         self.connectivity.toggle_simulation()
-        self.update_connectivity_status()
+        self._conn_generation += 1
+        self._conn_summary = None
+        if self.connectivity.is_simulated_offline:
+            # La simulación es inmediata (no abre sockets): se aplica sincrónicamente.
+            self._on_connectivity_result(self._conn_generation, self.connectivity.get_status_summary())
+        else:
+            # Vuelve la red real: comprobación en segundo plano con estado provisional.
+            self.lbl_conn_status.text = "Comprobando conectividad..."
+            self._refresh_connectivity()
+
+    def handle_back(self) -> bool:
+        """
+        Gestiona la tecla Botatrás de Android (keycode 27).
+
+        Devuelve True si la pulsación fue consumida (retroceso de pantalla)
+        y False en la pantalla raíz para que el sistema minimice la aplicación.
+        """
+        if self.sm.current in ("form", "query"):
+            self.navigate_to_library()
+            return True
+        return False
 
     def _set_active_nav_button(self, active_name: str):
         """Actualiza los estilos visuales de la barra de navegación según la pantalla activa."""

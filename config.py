@@ -47,16 +47,26 @@ OFFLINE_NOTICE = (
 def get_database_path() -> str:
     """
     Determina la ruta de almacenamiento de la base de datos SQLite.
-    En Android, utiliza el directorio privado de la aplicación para mayor seguridad.
-    En entorno de desarrollo local, utiliza una carpeta segura en el workspace.
+    En Android, python-for-android define ANDROID_APP_PATH con el directorio
+    privado de la aplicación (aislado por sandbox de Android): es el lugar
+    correcto y seguro para los datos íntimos del legado.
+    En entorno de desarrollo local, utiliza la carpeta del workspace.
     """
-    # Verificación de entorno Android mediante variables de entorno o Kivy
     android_app_path = os.environ.get("ANDROID_APP_PATH")
     if android_app_path:
         base_dir = Path(android_app_path)
     else:
         # Directorio base del proyecto
         base_dir = Path(__file__).resolve().parent
+
+    # Garantizar que el directorio exista y sea escribible antes de crear la BD
+    try:
+        base_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # Último recurso (p. ej. directorio de solo lectura): memoria temporal
+        import tempfile
+        base_dir = Path(tempfile.gettempdir()) / "legadovivo"
+        base_dir.mkdir(parents=True, exist_ok=True)
 
     db_path = base_dir / "legado_vivo.db"
     return str(db_path)

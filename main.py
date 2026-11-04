@@ -21,12 +21,18 @@ if platform not in ("android", "ios"):
 
 from kivy.app import App
 from kivy.core.window import Window
+from kivy.uix.textinput import TextInput
 
 from storage.repository import CapsuleRepository
 from services.capsule_service import CapsuleService
 from services.query_engine import QueryEngine
 from services.connectivity_service import ConnectivityService
 from ui.app_ui import MainMobileLayout
+
+# En Android el teclado virtual puede tapar el campo activo: con 'below_target'
+# Kivy desplaza la ventana para que el campo enfocado quede sobre el teclado.
+if platform == "android":
+    Window.softinput_mode = "below_target"
 
 
 class LegadoVivoApp(App):
@@ -50,11 +56,41 @@ class LegadoVivoApp(App):
         self.connectivity_service = ConnectivityService()
 
         # Construir y retornar la jerarquía visual raíz
-        return MainMobileLayout(
+        root = MainMobileLayout(
             capsule_service=self.capsule_service,
             query_engine=self.query_engine,
             connectivity_service=self.connectivity_service
         )
+
+        # Botatrás de Android (Kivy lo entrega como keycode 27, idéntico a ESC)
+        Window.bind(on_keyboard=self._on_keyboard)
+        return root
+
+    def _on_keyboard(self, window, key, *args):
+        """
+        Manejo de la tecla Botatrás de Android (keycode 27 / ESC).
+
+        - Diálogos ModalView: se registran al abrirse (después que este manejador)
+          y Kivy los despacha primero; si hay uno abierto, ni se alcanza este código
+          y el diálogo se cierra solo.
+        - Campo de texto enfocado: primero se descarta el teclado/campo (comportamiento
+          estándar de Android).
+        - Formulario o Consulta: retroceso a la Biblioteca (gestión de app_ui).
+        - Biblioteca (pantalla raíz): retorno False para conservar el comportamiento
+          por defecto de Kivy/Android (minimizar la aplicación).
+        """
+        if key != 27:
+            return False
+
+        focus = Window.focus
+        if focus is not None and isinstance(focus, TextInput):
+            focus.focus = False
+            return True
+
+        root = self.root
+        if root is None:
+            return False
+        return root.handle_back()
 
     def on_pause(self):
         """Manejo del ciclo de vida en Android: pausar sin destruir estado."""
