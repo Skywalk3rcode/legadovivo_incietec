@@ -11,8 +11,19 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
+from kivy.metrics import dp
 from kivy.graphics import Color, RoundedRectangle
 from config import DISCLAIMER_TEXT, ABSTENTION_MESSAGE
+
+
+def _autofit_label(label: Label, min_height: float):
+    """Altura automática del Label según su texto envuelto, con suelo `min_height`."""
+    label.bind(texture_size=lambda lbl, ts: setattr(lbl, "height", max(min_height, ts[1])))
+
+
+def _autofit_card(card: BoxLayout, base_height: float):
+    """Ajusta la tarjeta a su contenido sin bajar jamás del alto de diseño `base_height`."""
+    card.bind(minimum_height=lambda c, mh: setattr(c, "height", max(base_height, mh)))
 
 
 class QueryScreen(Screen):
@@ -24,7 +35,7 @@ class QueryScreen(Screen):
         super().__init__(**kwargs)
         self.engine = query_engine
 
-        main_box = BoxLayout(orientation="vertical", spacing=8, padding=[14, 10, 14, 10])
+        main_box = BoxLayout(orientation="vertical", spacing=dp(8), padding=[dp(14), dp(10), dp(14), dp(10)])
 
         # Encabezado
         lbl_header = Label(
@@ -33,7 +44,7 @@ class QueryScreen(Screen):
             bold=True,
             color=[0.1, 0.15, 0.25, 1],
             size_hint_y=None,
-            height=30,
+            height=dp(30),
             halign="left",
             valign="middle"
         )
@@ -44,12 +55,12 @@ class QueryScreen(Screen):
         disclaimer_box = BoxLayout(
             orientation="vertical",
             size_hint_y=None,
-            height=70,
-            padding=[12, 8, 12, 8]
+            height=dp(70),
+            padding=[dp(12), dp(8), dp(12), dp(8)]
         )
         with disclaimer_box.canvas.before:
             Color(0.98, 0.94, 0.85, 1)  # Fondo ámbar suave
-            self.disclaimer_rect = RoundedRectangle(size=disclaimer_box.size, pos=disclaimer_box.pos, radius=[8])
+            self.disclaimer_rect = RoundedRectangle(size=disclaimer_box.size, pos=disclaimer_box.pos, radius=[dp(8)])
         disclaimer_box.bind(
             size=lambda inst, v: setattr(self.disclaimer_rect, "size", inst.size),
             pos=lambda inst, v: setattr(self.disclaimer_rect, "pos", inst.pos)
@@ -59,15 +70,22 @@ class QueryScreen(Screen):
             text=f"⚖ {DISCLAIMER_TEXT}",
             font_size="11sp",
             color=[0.6, 0.35, 0.05, 1],
+            size_hint_y=None,
+            height=dp(54),
             halign="left",
             valign="middle"
         )
         lbl_disclaimer.bind(size=lbl_disclaimer.setter("text_size"))
+        # El descargo nunca se corta: crece con el texto y el banner con él
+        lbl_disclaimer.bind(
+            texture_size=lambda l, ts: setattr(l, "height", ts[1]),
+            height=lambda l, h: setattr(disclaimer_box, "height", max(dp(70), h + dp(16)))
+        )
         disclaimer_box.add_widget(lbl_disclaimer)
         main_box.add_widget(disclaimer_box)
 
         # Barra de Entrada de Consulta
-        search_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=44, spacing=8)
+        search_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(44), spacing=dp(8))
         self.txt_query = TextInput(
             hint_text="¿Qué principio o recuerdo deseas consultar?...",
             multiline=False,
@@ -92,14 +110,14 @@ class QueryScreen(Screen):
         main_box.add_widget(search_row)
 
         # Fila de Sugerencias Rápidas para pruebas y demostración
-        suggestions_box = BoxLayout(orientation="horizontal", size_hint_y=None, height=32, spacing=6)
+        suggestions_box = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(32), spacing=dp(6))
         sug_label = Label(
             text="Ejemplos:",
             font_size="11sp",
             bold=True,
             color=[0.4, 0.45, 0.5, 1],
             size_hint=(None, 1),
-            width=58
+            width=dp(58)
         )
         suggestions_box.add_widget(sug_label)
 
@@ -139,9 +157,9 @@ class QueryScreen(Screen):
         self.scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
         self.results_container = GridLayout(
             cols=1,
-            spacing=10,
+            spacing=dp(10),
             size_hint_y=None,
-            padding=[0, 6, 0, 16]
+            padding=[0, dp(6), 0, dp(16)]
         )
         self.results_container.bind(minimum_height=self.results_container.setter("height"))
         self.scroll.add_widget(self.results_container)
@@ -163,13 +181,13 @@ class QueryScreen(Screen):
         card = BoxLayout(
             orientation="vertical",
             size_hint_y=None,
-            height=160,
-            padding=[16, 16, 16, 16],
-            spacing=8
+            height=dp(160),
+            padding=[dp(16), dp(16), dp(16), dp(16)],
+            spacing=dp(8)
         )
         with card.canvas.before:
             Color(1, 1, 1, 1)
-            self.initial_rect = RoundedRectangle(size=card.size, pos=card.pos, radius=[12])
+            self.initial_rect = RoundedRectangle(size=card.size, pos=card.pos, radius=[dp(12)])
         card.bind(
             size=lambda inst, v: setattr(self.initial_rect, "size", inst.size),
             pos=lambda inst, v: setattr(self.initial_rect, "pos", inst.pos)
@@ -181,10 +199,11 @@ class QueryScreen(Screen):
             bold=True,
             color=[0.15, 0.2, 0.35, 1],
             size_hint_y=None,
-            height=24,
+            height=dp(24),
             halign="left"
         )
         t_lbl.bind(size=t_lbl.setter("text_size"))
+        _autofit_label(t_lbl, dp(24))
         card.add_widget(t_lbl)
 
         d_lbl = Label(
@@ -196,12 +215,16 @@ class QueryScreen(Screen):
             ),
             font_size="13sp",
             color=[0.35, 0.4, 0.45, 1],
+            size_hint_y=None,
+            height=dp(20),
             halign="left",
             valign="top"
         )
         d_lbl.bind(size=d_lbl.setter("text_size"))
+        _autofit_label(d_lbl, dp(20))
         card.add_widget(d_lbl)
 
+        _autofit_card(card, dp(160))
         self.results_container.add_widget(card)
 
     def execute_query(self):
@@ -215,13 +238,13 @@ class QueryScreen(Screen):
             abstention_card = BoxLayout(
                 orientation="vertical",
                 size_hint_y=None,
-                height=220,
-                padding=[16, 16, 16, 16],
-                spacing=10
+                height=dp(220),
+                padding=[dp(16), dp(16), dp(16), dp(16)],
+                spacing=dp(10)
             )
             with abstention_card.canvas.before:
                 Color(0.98, 0.94, 0.94, 1)  # Fondo rojizo muy suave
-                self.abs_rect = RoundedRectangle(size=abstention_card.size, pos=abstention_card.pos, radius=[12])
+                self.abs_rect = RoundedRectangle(size=abstention_card.size, pos=abstention_card.pos, radius=[dp(12)])
             abstention_card.bind(
                 size=lambda inst, v: setattr(self.abs_rect, "size", inst.size),
                 pos=lambda inst, v: setattr(self.abs_rect, "pos", inst.pos)
@@ -233,20 +256,24 @@ class QueryScreen(Screen):
                 bold=True,
                 color=[0.8, 0.15, 0.15, 1],
                 size_hint_y=None,
-                height=26,
+                height=dp(26),
                 halign="left"
             )
             abs_title.bind(size=abs_title.setter("text_size"))
+            _autofit_label(abs_title, dp(26))
             abstention_card.add_widget(abs_title)
 
             abs_body = Label(
                 text=result.answer,
                 font_size="13sp",
                 color=[0.25, 0.25, 0.25, 1],
+                size_hint_y=None,
+                height=dp(20),
                 halign="left",
                 valign="top"
             )
             abs_body.bind(size=abs_body.setter("text_size"))
+            _autofit_label(abs_body, dp(20))
             abstention_card.add_widget(abs_body)
 
             abs_hint = Label(
@@ -257,12 +284,14 @@ class QueryScreen(Screen):
                 font_size="11sp",
                 color=[0.55, 0.55, 0.6, 1],
                 size_hint_y=None,
-                height=32,
+                height=dp(32),
                 halign="left"
             )
             abs_hint.bind(size=abs_hint.setter("text_size"))
+            _autofit_label(abs_hint, dp(32))
             abstention_card.add_widget(abs_hint)
 
+            _autofit_card(abstention_card, dp(220))
             self.results_container.add_widget(abstention_card)
             return
 
@@ -270,13 +299,13 @@ class QueryScreen(Screen):
         answer_card = BoxLayout(
             orientation="vertical",
             size_hint_y=None,
-            height=200,
-            padding=[16, 14, 16, 14],
-            spacing=8
+            height=dp(200),
+            padding=[dp(16), dp(14), dp(16), dp(14)],
+            spacing=dp(8)
         )
         with answer_card.canvas.before:
             Color(1, 1, 1, 1)
-            self.ans_rect = RoundedRectangle(size=answer_card.size, pos=answer_card.pos, radius=[12])
+            self.ans_rect = RoundedRectangle(size=answer_card.size, pos=answer_card.pos, radius=[dp(12)])
         answer_card.bind(
             size=lambda inst, v: setattr(self.ans_rect, "size", inst.size),
             pos=lambda inst, v: setattr(self.ans_rect, "pos", inst.pos)
@@ -288,21 +317,26 @@ class QueryScreen(Screen):
             bold=True,
             color=[0.08, 0.52, 0.24, 1],
             size_hint_y=None,
-            height=26,
+            height=dp(26),
             halign="left"
         )
         ans_title.bind(size=ans_title.setter("text_size"))
+        _autofit_label(ans_title, dp(26))
         answer_card.add_widget(ans_title)
 
         ans_body = Label(
             text=result.answer,
             font_size="13sp",
             color=[0.2, 0.22, 0.26, 1],
+            size_hint_y=None,
+            height=dp(20),
             halign="left",
             valign="top"
         )
         ans_body.bind(size=ans_body.setter("text_size"))
+        _autofit_label(ans_body, dp(20))
         answer_card.add_widget(ans_body)
+        _autofit_card(answer_card, dp(200))
         self.results_container.add_widget(answer_card)
 
         # Sección: Fuentes Utilizadas
@@ -312,7 +346,7 @@ class QueryScreen(Screen):
             bold=True,
             color=[0.35, 0.4, 0.5, 1],
             size_hint_y=None,
-            height=26,
+            height=dp(26),
             halign="left"
         )
         sources_header.bind(size=sources_header.setter("text_size"))
@@ -322,13 +356,13 @@ class QueryScreen(Screen):
             src_card = BoxLayout(
                 orientation="vertical",
                 size_hint_y=None,
-                height=110,
-                padding=[14, 10, 14, 10],
-                spacing=4
+                height=dp(110),
+                padding=[dp(14), dp(10), dp(14), dp(10)],
+                spacing=dp(4)
             )
             with src_card.canvas.before:
                 Color(0.95, 0.97, 1.0, 1)  # Azul claro tenue
-                self.src_rect = RoundedRectangle(size=src_card.size, pos=src_card.pos, radius=[8])
+                self.src_rect = RoundedRectangle(size=src_card.size, pos=src_card.pos, radius=[dp(8)])
             src_card.bind(
                 size=lambda inst, v: setattr(self.src_rect, "size", inst.size),
                 pos=lambda inst, v: setattr(self.src_rect, "pos", inst.pos)
@@ -340,10 +374,11 @@ class QueryScreen(Screen):
                 bold=True,
                 color=[0.1, 0.25, 0.55, 1],
                 size_hint_y=None,
-                height=20,
+                height=dp(20),
                 halign="left"
             )
             st_lbl.bind(size=st_lbl.setter("text_size"))
+            _autofit_label(st_lbl, dp(20))
             src_card.add_widget(st_lbl)
 
             ex_lbl = Label(
@@ -351,11 +386,15 @@ class QueryScreen(Screen):
                 font_size="12sp",
                 italic=True,
                 color=[0.3, 0.35, 0.4, 1],
+                size_hint_y=None,
+                height=dp(20),
                 halign="left",
                 valign="top"
             )
             ex_lbl.bind(size=ex_lbl.setter("text_size"))
+            _autofit_label(ex_lbl, dp(20))
             src_card.add_widget(ex_lbl)
 
+            _autofit_card(src_card, dp(110))
             self.results_container.add_widget(src_card)
 

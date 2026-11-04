@@ -7,6 +7,7 @@ from kivy.uix.modalview import ModalView
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.button import Button
+from kivy.metrics import dp
 from kivy.graphics import Color, RoundedRectangle
 
 
@@ -18,19 +19,22 @@ class ConfirmDeleteDialog(ModalView):
     def __init__(self, capsule_title: str, on_confirm: Callable[[], None], **kwargs):
         super().__init__(**kwargs)
         self.size_hint = (0.88, None)
-        self.height = 240
+        self.height = dp(240)
         self.auto_dismiss = True
         self.background_color = [0, 0, 0, 0.6]
 
         container = BoxLayout(
             orientation="vertical",
-            padding=[20, 20, 20, 16],
-            spacing=14
+            padding=[dp(20), dp(20), dp(20), dp(16)],
+            spacing=dp(14)
         )
+        # El diálogo nunca corta el mensaje: crece con su contenido
+        # (como mínimo conserva el alto de diseño original).
+        container.bind(minimum_height=lambda ci, mh: setattr(self, "height", max(dp(240), mh)))
 
         with container.canvas.before:
             Color(1, 1, 1, 1)  # Fondo blanco
-            self.rect = RoundedRectangle(size=container.size, pos=container.pos, radius=[16])
+            self.rect = RoundedRectangle(size=container.size, pos=container.pos, radius=[dp(16)])
         container.bind(size=self._update_rect, pos=self._update_rect)
 
         # Título
@@ -40,27 +44,28 @@ class ConfirmDeleteDialog(ModalView):
             bold=True,
             color=[0.85, 0.15, 0.15, 1],
             size_hint_y=None,
-            height=28,
+            height=dp(28),
             halign="left"
         )
         title_lbl.bind(size=title_lbl.setter("text_size"))
         container.add_widget(title_lbl)
 
-        # Mensaje descriptivo
+        # Mensaje descriptivo (altura automática: títulos largos no se recortan)
         msg_lbl = Label(
             text=f"¿Está seguro de que desea eliminar la cápsula:\n«{capsule_title}»?\nEsta acción no se puede deshacer.",
             font_size="14sp",
             color=[0.2, 0.2, 0.2, 1],
             size_hint_y=None,
-            height=70,
+            height=dp(70),
             halign="left",
             valign="middle"
         )
         msg_lbl.bind(size=msg_lbl.setter("text_size"))
+        msg_lbl.bind(texture_size=lambda lbl, ts: setattr(lbl, "height", max(dp(70), ts[1])))
         container.add_widget(msg_lbl)
 
         # Botones de acción
-        btn_box = BoxLayout(orientation="horizontal", spacing=12, size_hint_y=None, height=46)
+        btn_box = BoxLayout(orientation="horizontal", spacing=dp(12), size_hint_y=None, height=dp(46))
 
         btn_cancel = Button(
             text="Cancelar",
@@ -105,18 +110,21 @@ class DisclaimerInfoDialog(ModalView):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.size_hint = (0.9, None)
-        self.height = 360
+        self.height = dp(360)
         self.auto_dismiss = True
 
         container = BoxLayout(
             orientation="vertical",
-            padding=[20, 20, 20, 16],
-            spacing=12
+            padding=[dp(20), dp(20), dp(20), dp(16)],
+            spacing=dp(12)
         )
+        # El marco ético nunca se corta: crece con su contenido
+        # (como mínimo conserva el alto de diseño original).
+        container.bind(minimum_height=lambda ci, mh: setattr(self, "height", max(dp(360), mh)))
 
         with container.canvas.before:
             Color(1, 1, 1, 1)
-            self.rect = RoundedRectangle(size=container.size, pos=container.pos, radius=[16])
+            self.rect = RoundedRectangle(size=container.size, pos=container.pos, radius=[dp(16)])
         container.bind(size=self._update_rect, pos=self._update_rect)
 
         title = Label(
@@ -125,7 +133,7 @@ class DisclaimerInfoDialog(ModalView):
             bold=True,
             color=[0.1, 0.2, 0.5, 1],
             size_hint_y=None,
-            height=28,
+            height=dp(28),
             halign="left"
         )
         title.bind(size=title.setter("text_size"))
@@ -144,11 +152,12 @@ class DisclaimerInfoDialog(ModalView):
             font_size="13sp",
             color=[0.25, 0.25, 0.25, 1],
             size_hint_y=None,
-            height=200,
+            height=dp(200),
             halign="left",
             valign="top"
         )
         body.bind(size=body.setter("text_size"))
+        body.bind(texture_size=lambda lbl, ts: setattr(lbl, "height", max(dp(200), ts[1])))
         container.add_widget(body)
 
         btn_close = Button(
@@ -159,7 +168,7 @@ class DisclaimerInfoDialog(ModalView):
             background_color=[0.12, 0.35, 0.7, 1],
             color=[1, 1, 1, 1],
             size_hint_y=None,
-            height=44
+            height=dp(44)
         )
         btn_close.bind(on_release=self.dismiss)
         container.add_widget(btn_close)

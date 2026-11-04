@@ -12,6 +12,8 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
 from kivy.uix.switch import Switch
 from kivy.uix.button import Button
+from kivy.clock import Clock
+from kivy.metrics import dp
 from kivy.graphics import Color, RoundedRectangle
 from models.capsule import Capsule
 from config import AVAILABLE_TOPICS
@@ -29,7 +31,7 @@ class FormScreen(Screen):
         self.on_cancel = on_cancel
         self.editing_capsule: Optional[Capsule] = None
 
-        main_box = BoxLayout(orientation="vertical", spacing=8, padding=[16, 12, 16, 12])
+        main_box = BoxLayout(orientation="vertical", spacing=dp(8), padding=[dp(16), dp(12), dp(16), dp(12)])
 
         # Encabezado del Formulario
         self.header_lbl = Label(
@@ -38,7 +40,7 @@ class FormScreen(Screen):
             bold=True,
             color=[0.1, 0.15, 0.25, 1],
             size_hint_y=None,
-            height=32,
+            height=dp(32),
             halign="left",
             valign="middle"
         )
@@ -61,7 +63,8 @@ class FormScreen(Screen):
 
         # Formulario deslizable
         scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
-        form_content = BoxLayout(orientation="vertical", spacing=12, size_hint_y=None, padding=[0, 4, 0, 16])
+        self.scroll = scroll
+        form_content = BoxLayout(orientation="vertical", spacing=dp(12), size_hint_y=None, padding=[0, dp(4), 0, dp(16)])
         form_content.bind(minimum_height=form_content.setter("height"))
 
         # Campo: Título
@@ -71,7 +74,7 @@ class FormScreen(Screen):
             bold=True,
             color=[0.2, 0.25, 0.3, 1],
             size_hint_y=None,
-            height=20,
+            height=dp(20),
             halign="left"
         )
         lbl_title.bind(size=lbl_title.setter("text_size"))
@@ -82,8 +85,8 @@ class FormScreen(Screen):
             multiline=False,
             font_size="15sp",
             size_hint_y=None,
-            height=44,
-            padding=[10, 10, 10, 10]
+            height=dp(44),
+            padding=[dp(10), dp(10), dp(10), dp(10)]
         )
         form_content.add_widget(self.txt_title)
 
@@ -94,7 +97,7 @@ class FormScreen(Screen):
             bold=True,
             color=[0.2, 0.25, 0.3, 1],
             size_hint_y=None,
-            height=20,
+            height=dp(20),
             halign="left"
         )
         lbl_topic.bind(size=lbl_topic.setter("text_size"))
@@ -105,7 +108,7 @@ class FormScreen(Screen):
             values=AVAILABLE_TOPICS,
             font_size="14sp",
             size_hint_y=None,
-            height=44,
+            height=dp(44),
             background_normal="",
             background_color=[0.92, 0.94, 0.97, 1],
             color=[0.15, 0.2, 0.3, 1]
@@ -119,7 +122,7 @@ class FormScreen(Screen):
             bold=True,
             color=[0.2, 0.25, 0.3, 1],
             size_hint_y=None,
-            height=20,
+            height=dp(20),
             halign="left"
         )
         lbl_content.bind(size=lbl_content.setter("text_size"))
@@ -130,13 +133,13 @@ class FormScreen(Screen):
             multiline=True,
             font_size="14sp",
             size_hint_y=None,
-            height=140,
-            padding=[10, 10, 10, 10]
+            height=dp(140),
+            padding=[dp(10), dp(10), dp(10), dp(10)]
         )
         form_content.add_widget(self.txt_content)
 
         # Fila: Switch de Aprobación Inmediata
-        approval_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=48, spacing=10)
+        approval_row = BoxLayout(orientation="horizontal", size_hint_y=None, height=dp(48), spacing=dp(10))
         lbl_switch = Label(
             text="Aprobar inmediatamente como fuente autorizada",
             font_size="13sp",
@@ -147,7 +150,7 @@ class FormScreen(Screen):
         lbl_switch.bind(size=lbl_switch.setter("text_size"))
         approval_row.add_widget(lbl_switch)
 
-        self.switch_approved = Switch(active=True, size_hint=(None, 1), width=65)
+        self.switch_approved = Switch(active=True, size_hint=(None, 1), width=dp(65))
         approval_row.add_widget(self.switch_approved)
         form_content.add_widget(approval_row)
 
@@ -156,14 +159,14 @@ class FormScreen(Screen):
             font_size="11sp",
             color=[0.5, 0.55, 0.6, 1],
             size_hint_y=None,
-            height=18,
+            height=dp(18),
             halign="left"
         )
         lbl_switch_hint.bind(size=lbl_switch_hint.setter("text_size"))
         form_content.add_widget(lbl_switch_hint)
 
         # Botones de Acción
-        actions_box = BoxLayout(orientation="vertical", spacing=8, size_hint_y=None, height=140, padding=[0, 10, 0, 0])
+        actions_box = BoxLayout(orientation="vertical", spacing=dp(8), size_hint_y=None, height=dp(140), padding=[0, dp(10), 0, 0])
 
         btn_save = Button(
             text="Guardar Cápsula",
@@ -173,7 +176,7 @@ class FormScreen(Screen):
             background_color=[0.12, 0.45, 0.78, 1],
             color=[1, 1, 1, 1],
             size_hint_y=None,
-            height=46
+            height=dp(46)
         )
         btn_save.bind(on_release=self.save_capsule)
         actions_box.add_widget(btn_save)
@@ -185,7 +188,7 @@ class FormScreen(Screen):
             background_color=[0.9, 0.92, 0.95, 1],
             color=[0.25, 0.3, 0.35, 1],
             size_hint_y=None,
-            height=40
+            height=dp(40)
         )
         btn_cancel.bind(on_release=lambda x: self.on_cancel())
         actions_box.add_widget(btn_cancel)
@@ -197,7 +200,7 @@ class FormScreen(Screen):
             background_color=[1, 1, 1, 0],
             color=[0.45, 0.5, 0.55, 1],
             size_hint_y=None,
-            height=30
+            height=dp(30)
         )
         btn_clear.bind(on_release=lambda x: self.clear_fields())
         actions_box.add_widget(btn_clear)
@@ -207,6 +210,19 @@ class FormScreen(Screen):
         main_box.add_widget(scroll)
 
         self.add_widget(main_box)
+
+        # Teclado virtual Android: al enfocar un campo, desplazarlo a la vista
+        # (complementa Window.softinput_mode='below_target' configurado en main.py)
+        self.txt_title.bind(focused=self._scroll_field_into_view)
+        self.txt_content.bind(focused=self._scroll_field_into_view)
+
+    def _scroll_field_into_view(self, instance, focused: bool):
+        """Mantiene visible el campo enfocado cuando aparece el teclado virtual."""
+        if focused and self.scroll is not None:
+            Clock.schedule_once(
+                lambda dt: self.scroll.scroll_to(instance, padding=dp(16), animate=True),
+                0.1
+            )
 
     def load_capsule(self, capsule: Optional[Capsule]):
         """Carga una cápsula para edición o restablece para nueva creación."""
@@ -234,7 +250,7 @@ class FormScreen(Screen):
         """Muestra un mensaje de error en el banner."""
         self.feedback_banner.text = f"⚠ {message}"
         self.feedback_banner.color = [0.85, 0.15, 0.15, 1]
-        self.feedback_banner.height = 32
+        self.feedback_banner.height = dp(32)
 
     def clear_feedback(self):
         """Oculta el banner de validación."""
