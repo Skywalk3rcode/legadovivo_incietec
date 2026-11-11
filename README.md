@@ -1,10 +1,10 @@
-# LegadoVivo — MVP
+# LegadoVivo — MVP (Arquitectura Nativa sin Docker)
 
-Plataforma de preservación de recuerdos y mimetismo de personalidad en IA con **Cero Alucinación** y **Doble Rol Contextual** para la interacción post-mortem con seres queridos.
+Plataforma de preservación de recuerdos y mimetismo de personalidad en IA con **Cero Alucinación** y **Doble Rol Contextual**, funcionando de forma **100% nativa en disco sin necesidad de Docker**.
 
 ---
 
-## 🏛️ Arquitectura del Sistema
+## 🏛️ Nueva Arquitectura Local (Cero Contenedores)
 
 ```
                          [ Beneficiario / Titular ]
@@ -12,11 +12,10 @@ Plataforma de preservación de recuerdos y mimetismo de personalidad en IA con *
                      ┌───────────────┴──────────────┐
                      │  Frontend SPA (React + Vite) │
                      │  Tailwind CSS + TypeScript   │
-                     │  • AuthContext (JWT)         │
                      │  • Dashboard Doble Rol       │
                      │  • Síntesis y Dictado de Voz │
                      └───────────────┬──────────────┘
-                                     │ HTTP / REST Bearer Token (/api)
+                                     │ HTTP / REST (/api)
                      ┌───────────────▼──────────────┐
                      │    FastAPI Core Microservice  │
                      └───────┬──────────────┬───────┘
@@ -24,77 +23,58 @@ Plataforma de preservación de recuerdos y mimetismo de personalidad en IA con *
            ┌─────────────────┴────┐   ┌─────┴──────────────────┐
            │                      │   │                        │
   ┌────────▼────────┐   ┌─────────▼───▼──┐            ┌────────▼────────┐
-  │ PostgreSQL 16   │   │  MongoDB 7.0   │            │   ChromaDB      │
-  │ (SQLAlchemy)    │   │  (Motor NoSQL) │            │  Vector Store   │
-  │ - User (BCrypt) │   │ - Cápsulas     │            └────────┬────────┘
-  │ - LegacyConnect │   │ - Sesiones     │                     │
-  │ - LegacyPlan    │   │ - Perfiles     │            ┌────────▼────────┐
-  │ - AuditLog      │   └────────────────┘            │  Ollama Local   │
-  └─────────────────┘                                 │  (Llama 3 /     │
-                                                      │   Mistral)      │
+  │ SQLite Nativo   │   │  NoSQL Local   │            │ ChromaDB Embeb. │
+  │ (SQLAlchemy)    │   │  (JSON / Mongo)│            │ (En disco)      │
+  │ • Usuarios      │   │ • Cápsulas     │            └────────┬────────┘
+  │ • Conexiones    │   │ • Sesiones     │                     │
+  │ • Planes Legado │   │ • Perfiles     │            ┌────────▼────────┐
+  │ • Auditoría     │   │                │            │ Ollama Local    │
+  └─────────────────┘   └────────────────┘            │ (Llama 3 /      │
+                                                      │  Mistral)       │
                                                       └─────────────────┘
 ```
 
----
-
-## 👥 Concepto de Negocio: Doble Rol Contextual
-
-Cada usuario registrado en **LegadoVivo** posee una única cuenta pero disfruta de dos interfaces dentro de su Dashboard:
-
-1. **"Mi Legado" (Rol Titular)**:
-   - Captura anécdotas, recetas y enseñanzas de vida.
-   - Genera **Códigos de Invitación Alfanuméricos** (`LEG-XXXXXX`) protegidos criptográficamente.
-   - Administra la lista de familiares autorizados para acceder a su memoria viva.
-2. **"Mis Seres Queridos" (Rol Beneficiario)**:
-   - Ingresa códigos de vinculación provistos por familiares.
-   - Visualiza las tarjetas de todos los titulares a los que está conectado.
-   - Accede con un clic al **Chat RAG** exclusivo de cada familiar para conversar con sus recuerdos.
+* **SQL Transaccional**: `backend/data/legadovivo.db` (SQLite nativo vía SQLAlchemy, soporta usuarios, roles, JWT y vinculación de familiares).
+* **Base Vectorial**: `backend/data/chroma_db/` (ChromaDB embebido en disco con distancia coseno para RAG).
+* **Almacén Documental**: `backend/data/nosql_store.json` (o MongoDB nativo si está iniciado en Windows).
+* **LLM Local**: `Ollama` de escritorio en `http://localhost:11434`.
 
 ---
 
-## 🔑 Endpoints de la API REST
+## 🚀 Puesta en Marcha en 2 Pasos (Sin Docker)
 
-### 1. Autenticación & Seguridad (`/api/auth`)
-* `POST /api/auth/register`: Registro con hashing de contraseñas vía BCrypt y emisión de JWT.
-* `POST /api/auth/login`: Autenticación y obtención de Bearer Token.
-* `GET /api/auth/me`: Perfil del usuario activo mediante la dependencia `get_current_user`.
+### 1. Iniciar el Backend (FastAPI)
+En una terminal PowerShell en la raíz del proyecto:
 
-### 2. Vinculación & Conexiones (`/api/legacy`)
-* `POST /api/legacy/generate-code`: Genera un código de invitación para beneficiarios.
-* `POST /api/legacy/link`: Vincula al usuario logueado con el titular dueño del código.
-* `GET /api/legacy/my-connections`: Lista de legados a los que tiene acceso el usuario (Seres Queridos).
-* `GET /api/legacy/my-beneficiaries`: Lista de familiares vinculados al legado del usuario.
-
-### 3. Recuerdos & Chat Neuronal
-* `POST /api/capsules/`: Ingesta, vectorización en ChromaDB y actualización del Learning Loop.
-* `GET /api/capsules/`: Biblioteca de recuerdos del titular.
-* `GET /api/capsules/style-profile`: Síntesis de muletillas y nivel de afecto.
-* `POST /api/chat/`: Chat RAG con Ollama y regla estricta de **Cero Alucinación**.
-
----
-
-## 🚀 Puesta en Marcha Rápida
-
-### Opción 1: Todo en Contenedores (Docker Compose)
-```bash
-docker compose up -d --build
+```powershell
+.\start-backend.ps1
 ```
-Descargar modelo en Ollama:
-```bash
-docker exec -it legadovivo_ollama ollama pull llama3:8b
-```
+*(o haz doble clic en `start-backend.bat`)*.
 
-### Opción 2: Frontend en Desarrollo (React 18 + Vite)
-```bash
+El backend creará automáticamente los archivos en `backend\data` y quedará escuchando en:
+👉 **`http://localhost:8080`** (Documentación Swagger interactiva: `http://localhost:8080/docs`).
+
+### 2. Iniciar el Frontend (React + Vite)
+En otra terminal:
+
+```powershell
 cd frontend
-npm install
 npm run dev
 ```
-Abre en tu navegador: **`http://localhost:5173`**
-* Credenciales Demo: `alberto@legadovivo.com` / `clave123` (con botón de autocompletado en `/login`).
+
+Abre en tu navegador:
+👉 **`http://localhost:5173`**
 
 ---
 
-## 🧪 Pruebas Automatizadas
-* **`backend/tests/test_rag_and_style.py`**: Valida el extractor lingüístico y la regla forzada de Cero Alucinación.
-* **`backend/tests/test_auth_and_connections.py`**: Valida el hashing BCrypt, firma JWT y generación de códigos únicos.
+## 🧠 Características Principales
+
+1. **Doble Rol Contextual**:
+   - Pestaña **"Mi Legado" (Titular)**: Redacta cápsulas de vida, genera códigos de invitación (`LEG-XXXXXX`) y administra quién puede escuchar sus recuerdos.
+   - Pestaña **"Mis Seres Queridos" (Beneficiario)**: Ingresa códigos familiares y chatea con el legado de sus seres queridos con voz y texto.
+2. **Regla Estricta de CERO ALUCINACIÓN**:
+   - Si no hay recuerdos sobre la pregunta, la IA tiene prohibido inventar y responde:
+     > *"No dejé registros sobre este tema específico en mi legado, pero me encantaría que recordáramos [tema cercano]."*
+3. **Mimetismo de Voz y Personalidad**:
+   - Extrae muletillas (`"mijito"`, `"oye"`, `"te cuento"`) y calidez para inyectarlos en el prompt de Ollama.
+   - Incluye síntesis de voz pausada (Web Speech API) y micrófono para dictar preguntas.

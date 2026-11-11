@@ -1,44 +1,45 @@
 import os
 from typing import List
+from pydantic import field_validator
 
 try:
     from pydantic_settings import BaseSettings, SettingsConfigDict
     USE_PYDANTIC_SETTINGS = True
 except ImportError:
-    from pydantic import BaseModel
     USE_PYDANTIC_SETTINGS = False
 
 
 if USE_PYDANTIC_SETTINGS:
     class Settings(BaseSettings):
-        PROJECT_NAME: str = "LegadoVivo API"
-        VERSION: str = "0.1.0"
+        PROJECT_NAME: str = "LegadoVivo API (PostgreSQL & MongoDB en PC)"
+        VERSION: str = "0.2.0"
         ENVIRONMENT: str = "development"
         DEBUG: bool = True
         API_PORT: int = 8080
 
-        # PostgreSQL
-        POSTGRES_USER: str = "legado_admin"
-        POSTGRES_PASSWORD: str = "legado_secure_pass_2026"
-        POSTGRES_HOST: str = "localhost"
-        POSTGRES_PORT: int = 5432
-        POSTGRES_DB: str = "legadovivo_db"
-        POSTGRES_URL: str = "postgresql+psycopg2://legado_admin:legado_secure_pass_2026@localhost:5432/legadovivo_db"
+        # PostgreSQL en PC local (sin Docker)
+        POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
+        POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "1040572521")
+        POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
+        POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", "5432"))
+        POSTGRES_DB: str = os.getenv("POSTGRES_DB", "legadovivo_db")
+        POSTGRES_URL: str = os.getenv(
+            "POSTGRES_URL",
+            f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+        )
 
-        # MongoDB
-        MONGO_HOST: str = "localhost"
-        MONGO_PORT: int = 27017
-        MONGO_DB: str = "legadovivo_nosql"
-        MONGO_URI: str = "mongodb://mongo_admin:mongo_secure_pass_2026@localhost:27017/?authSource=admin"
+        # MongoDB en PC local (sin Docker)
+        MONGO_HOST: str = os.getenv("MONGO_HOST", "localhost")
+        MONGO_PORT: int = int(os.getenv("MONGO_PORT", "27017"))
+        MONGO_DB: str = os.getenv("MONGO_DB", "legadovivo_nosql")
+        MONGO_URI: str = os.getenv("MONGO_URI", f"mongodb://{MONGO_HOST}:{MONGO_PORT}")
 
-        # ChromaDB
-        CHROMA_HOST: str = "localhost"
-        CHROMA_PORT: int = 8000
-        CHROMA_PERSIST_DIRECTORY: str = "./chroma_storage"
+        # Base Vectorial: ChromaDB persistente en disco
+        CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_storage")
 
-        # Ollama & Embeddings
-        OLLAMA_HOST: str = "http://localhost:11434"
-        OLLAMA_MODEL: str = "llama3:8b"
+        # Ollama LLM Local
+        OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3:8b")
         EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
 
         # Seguridad y JWT
@@ -48,6 +49,16 @@ if USE_PYDANTIC_SETTINGS:
 
         # CORS
         ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+
+        @field_validator("ALLOWED_ORIGINS", mode="before")
+        @classmethod
+        def parse_cors_origins(cls, v):
+            if isinstance(v, str):
+                if v.startswith("[") and v.endswith("]"):
+                    import json
+                    return json.loads(v)
+                return [origin.strip() for origin in v.split(",") if origin.strip()]
+            return v
 
         model_config = SettingsConfigDict(
             env_file=".env",
@@ -59,46 +70,41 @@ if USE_PYDANTIC_SETTINGS:
 
 else:
     class Settings:
-        PROJECT_NAME: str = "LegadoVivo API"
-        VERSION: str = "0.1.0"
-        ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+        PROJECT_NAME: str = "LegadoVivo API (PostgreSQL & MongoDB en PC)"
+        VERSION: str = "0.2.0"
+        ENVIRONMENT: str = "development"
         DEBUG: bool = True
-        API_PORT: int = int(os.getenv("API_PORT", 8080))
+        API_PORT: int = 8080
 
-        # PostgreSQL
-        POSTGRES_USER: str = os.getenv("POSTGRES_USER", "legado_admin")
-        POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "legado_secure_pass_2026")
+        # PostgreSQL en PC local
+        POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
+        POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "1040572521")
         POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
-        POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", 5432))
+        POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", "5432"))
         POSTGRES_DB: str = os.getenv("POSTGRES_DB", "legadovivo_db")
         POSTGRES_URL: str = os.getenv(
             "POSTGRES_URL",
-            "postgresql+psycopg2://legado_admin:legado_secure_pass_2026@localhost:5432/legadovivo_db"
+            f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
         )
 
-        # MongoDB
+        # MongoDB en PC local
         MONGO_HOST: str = os.getenv("MONGO_HOST", "localhost")
-        MONGO_PORT: int = int(os.getenv("MONGO_PORT", 27017))
+        MONGO_PORT: int = int(os.getenv("MONGO_PORT", "27017"))
         MONGO_DB: str = os.getenv("MONGO_DB", "legadovivo_nosql")
-        MONGO_URI: str = os.getenv(
-            "MONGO_URI",
-            "mongodb://mongo_admin:mongo_secure_pass_2026@localhost:27017/?authSource=admin"
-        )
+        MONGO_URI: str = os.getenv("MONGO_URI", f"mongodb://{MONGO_HOST}:{MONGO_PORT}")
 
-        # ChromaDB
-        CHROMA_HOST: str = os.getenv("CHROMA_HOST", "localhost")
-        CHROMA_PORT: int = int(os.getenv("CHROMA_PORT", 8000))
+        # Base Vectorial: ChromaDB persistente en disco
         CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_storage")
 
-        # Ollama & Embeddings
+        # Ollama LLM Local
         OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3:8b")
-        EMBEDDING_MODEL_NAME: str = os.getenv("EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
+        EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
 
         # Seguridad y JWT
         SECRET_KEY: str = os.getenv("SECRET_KEY", "legadovivo_super_secret_jwt_key_2026_change_in_production")
         ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
-        ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 7))
+        ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
 
         # CORS
         ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]

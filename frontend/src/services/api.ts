@@ -66,6 +66,23 @@ const API_BASE = '/api';
 // Circuit breaker para modo local/offline
 let isBackendAvailable: boolean | null = null;
 
+async function checkBackendAvailability(): Promise<boolean> {
+  if (isBackendAvailable !== null) return isBackendAvailable;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+    const res = await fetch(`${API_BASE}/health`, { 
+      method: 'GET',
+      signal: controller.signal 
+    });
+    clearTimeout(timeoutId);
+    isBackendAvailable = res.ok;
+  } catch {
+    isBackendAvailable = false;
+  }
+  return isBackendAvailable;
+}
+
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem('legadovivo_token');
   return token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -212,14 +229,17 @@ export const api = {
   // ==========================================
   // Rol Titular: Generar código de invitación
   async generateInviteCode(): Promise<{ connection_code: string; message: string }> {
-    try {
-      const res = await fetch(`${API_BASE}/legacy/generate-code`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() }
-      });
-      if (res.ok) return await res.json();
-    } catch {
-      // Fallback
+    const online = await checkBackendAvailability();
+    if (online) {
+      try {
+        const res = await fetch(`${API_BASE}/legacy/generate-code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() }
+        });
+        if (res.ok) return await res.json();
+      } catch {
+        isBackendAvailable = false;
+      }
     }
 
     const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -239,28 +259,34 @@ export const api = {
 
   // Rol Titular: Obtener invitaciones/beneficiarios propios
   async getMyBeneficiaries(): Promise<BeneficiaryInvite[]> {
-    try {
-      const res = await fetch(`${API_BASE}/legacy/my-beneficiaries`, {
-        headers: getAuthHeader()
-      });
-      if (res.ok) return await res.json();
-    } catch {
-      // Fallback
+    const online = await checkBackendAvailability();
+    if (online) {
+      try {
+        const res = await fetch(`${API_BASE}/legacy/my-beneficiaries`, {
+          headers: getAuthHeader()
+        });
+        if (res.ok) return await res.json();
+      } catch {
+        isBackendAvailable = false;
+      }
     }
     return LOCAL_INVITES;
   },
 
   // Rol Beneficiario: Enviar código para vincularse a un Titular
   async linkWithCode(code: string): Promise<LegacyConnectionSummary> {
-    try {
-      const res = await fetch(`${API_BASE}/legacy/link`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ connection_code: code })
-      });
-      if (res.ok) return await res.json();
-    } catch {
-      // Fallback
+    const online = await checkBackendAvailability();
+    if (online) {
+      try {
+        const res = await fetch(`${API_BASE}/legacy/link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          body: JSON.stringify({ connection_code: code })
+        });
+        if (res.ok) return await res.json();
+      } catch {
+        isBackendAvailable = false;
+      }
     }
 
     const newConnection: LegacyConnectionSummary = {
@@ -278,13 +304,16 @@ export const api = {
 
   // Rol Beneficiario: Lista de Titulares a los que tengo acceso ("Seres Queridos")
   async getMyConnections(): Promise<LegacyConnectionSummary[]> {
-    try {
-      const res = await fetch(`${API_BASE}/legacy/my-connections`, {
-        headers: getAuthHeader()
-      });
-      if (res.ok) return await res.json();
-    } catch {
-      // Fallback
+    const online = await checkBackendAvailability();
+    if (online) {
+      try {
+        const res = await fetch(`${API_BASE}/legacy/my-connections`, {
+          headers: getAuthHeader()
+        });
+        if (res.ok) return await res.json();
+      } catch {
+        isBackendAvailable = false;
+      }
     }
     return LOCAL_CONNECTIONS;
   },

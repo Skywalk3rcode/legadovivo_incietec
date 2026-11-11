@@ -1,4 +1,6 @@
 import logging
+import psycopg2
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.core.config import settings
@@ -8,33 +10,44 @@ logger = logging.getLogger(__name__)
 Base = declarative_base()
 
 
-def get_engine():
+def ensure_postgres_database_exists():
     """
-    Crea el motor SQL con resiliencia:
-    1. Intenta conectar a PostgreSQL.
-    2. Si PostgreSQL no está corriendo en local, conmuta automáticamente a SQLite
-       para que la autenticación, roles y códigos funcionen inmediatamente sin bloquear al desarrollador.
+    Verifica e intenta crear automáticamente la base de datos 'legadovivo_db'
+    en el servidor PostgreSQL local de tu PC si aún no existe.
     """
     try:
-        # Timeout corto para no demorar el inicio
-        eng = create_engine(
-            settings.POSTGRES_URL,
-            pool_pre_ping=True,
-            connect_args={"connect_timeout": 3}
+        conn = psycopg2.connect(
+            user=settings.POSTGRES_USER,
+            password=settings.POSTGRES_PASSWORD,
+            host=settings.POSTGRES_HOST,
+            port=settings.POSTGRES_PORT,
+            dbname="postgres",
+            connect_timeout=3
         )
-        with eng.connect() as conn:
-            pass
-        logger.info("Conexión exitosa a PostgreSQL.")
-        return eng
+        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT 1 FROM pg_database WHERE datname = '{settings.POSTGRES_DB}';")
+        exists = cursor.fetchone()
+        if not exists:
+            cursor.execute(f"CREATE DATABASE {settings.POSTGRES_DB} ENCODING 'UTF8';")
+            logger.info(f"Base de datos '{settings.POSTGRES_DB}' creada en PostgreSQL local.")
+        else:
+            logger.info(f"Base de datos '{settings.POSTGRES_DB}' ya existe en PostgreSQL local.")
+        cursor.close()
+        conn.close()
     except Exception as e:
-        logger.warning(
-            f"PostgreSQL en {settings.POSTGRES_HOST}:{settings.POSTGRES_PORT} no está activo ({e}). "
-            "Activando SQLite local ('sqlite:///./legadovivo_dev.db') para desarrollo continuo."
-        )
-        return create_engine(
-            "sqlite:///./legadovivo_dev.db",
-            connect_args={"check_same_thread": False}
-        )
+        logger.warning(f"Aviso al verificar base de datos en PostgreSQL: {e}")
+
+
+def get_engine():
+    """Crea el motor SQLAlchemy para PostgreSQL nativo en tu PC."""
+    ensure_postgres_database_exists()
+    return create_engine(
+        settings.POSTGRES_URL,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20
+    )
 
 
 engine = get_engine()
@@ -51,9 +64,9 @@ def get_db():
 
 
 def init_sql_db():
-    """Inicializa las tablas SQL (en PostgreSQL o SQLite local)."""
+    """Crea todas las tablas (users, legacy_connections, legacy_plans, audit_logs) en PostgreSQL."""
     try:
         Base.metadata.create_all(bind=engine)
-        logger.info("Tablas de base de datos verificadas/creadas con éxito.")
+        logger.info(f"Tablas de PostgreSQL creadas/verificadas con éxito en '{settings.POSTGRES_DB}'.")
     except Exception as e:
-        logger.error(f"Error inicializando tablas SQL: {e}")
+        logger.error(f"Error inicializando tablas en PostgreSQL: {e}")
