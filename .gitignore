@@ -1,25 +1,11 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Pytest / Caches
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Local databases
-*.db
-*.sqlite3
-
-# Kivy / Buildozer output
-.buildozer/
-bin/
-
-# Environment / IDEs
-.env
+# Entornos virtuales de Python
 venv/
-.venv/
-.idea/
-.vscode/
+env/
+__pycache__/
 
+# Frontend
+node_modules/
+dist/
+
+# Variables de entorno (¡Muy importante!)
+.env
