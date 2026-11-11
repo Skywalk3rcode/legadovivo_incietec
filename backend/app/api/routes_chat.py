@@ -20,6 +20,11 @@ class ChatQueryResponse(BaseModel):
     sources: List[str]
     confidence: float
     matched_memories: int
+    llm_status: str = Field(
+        default="generated",
+        description="Estado de inferencia: 'generated', 'no_memories', 'model_not_found', 'ollama_unavailable', 'fallback'"
+    )
+    model_used: Optional[str] = Field(default=None, description="Modelo Ollama utilizado")
 
 
 @router.post("/", response_model=ChatQueryResponse)
@@ -30,8 +35,9 @@ async def query_legacy_chat(
     """
     Endpoint del Chat del Legado:
     - Realiza búsqueda de similitud en ChromaDB.
-    - Aplica Cero Alucinación: si no hay memoria cercana, responde con la sugerencia forzada.
-    - Si existe, genera respuesta imitando la personalidad y muletillas del titular con Ollama.
+    - Aplica Cero Alucinación: si no hay memoria cercana, responde con la sugerencia forzada (llm_status='no_memories').
+    - Si existe, genera respuesta imitando la personalidad y muletillas del titular con Ollama (llm_status='generated').
+    - Si Ollama falla, devuelve respuesta de contingencia indicando el motivo en llm_status.
     """
     active_titular_id = req.titular_id or default_titular_id
 
@@ -64,7 +70,9 @@ async def query_legacy_chat(
             response=result["response"],
             sources=result["sources"],
             confidence=result["confidence"],
-            matched_memories=result["matched_memories"]
+            matched_memories=result["matched_memories"],
+            llm_status=result.get("llm_status", "generated"),
+            model_used=result.get("model_used")
         )
 
     except Exception as e:

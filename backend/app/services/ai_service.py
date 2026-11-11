@@ -181,7 +181,9 @@ class AIService:
                 "response": fallback_response,
                 "sources": [],
                 "confidence": 0.0,
-                "matched_memories": 0
+                "matched_memories": 0,
+                "llm_status": "no_memories",
+                "model_used": None
             }
 
         # CASO B: Hay recuerdos relevantes -> Llamar a Ollama con inyección de estilo
@@ -205,7 +207,7 @@ RECUERDOS VERIFICADOS:
 {context_text}
 """
 
-        llm_response = await cls._call_ollama(
+        llm_response, llm_status, model_used = await cls._call_ollama(
             system_prompt=system_prompt,
             user_prompt=user_message
         )
@@ -214,12 +216,18 @@ RECUERDOS VERIFICADOS:
             "response": llm_response,
             "sources": sources,
             "confidence": 1.0 - min(distances) if distances else 1.0,
-            "matched_memories": len(relevant_docs)
+            "matched_memories": len(relevant_docs),
+            "llm_status": llm_status,
+            "model_used": model_used
         }
 
     @classmethod
-    async def _call_ollama(cls, system_prompt: str, user_prompt: str) -> str:
-        """Invoca el LLM de Ollama vía HTTP asíncrono con fallback tolerante a fallos."""
+    async def _call_ollama(cls, system_prompt: str, user_prompt: str):
+        """
+        Invoca el LLM de Ollama vía HTTP asíncrono.
+        Retorna: (contenido_respuesta, llm_status, model_used)
+        Donde llm_status puede ser: 'generated', 'fallback', u 'ollama_unavailable'.
+        """
         endpoint = f"{settings.OLLAMA_HOST}/api/chat"
         payload = {
             "model": settings.OLLAMA_MODEL,
@@ -229,7 +237,7 @@ RECUERDOS VERIFICADOS:
             ],
             "stream": False,
             "options": {
-                "temperature": 0.4, # Temperatura moderada-baja para evitar alucinaciones
+                "temperature": 0.4,  # Temperatura moderada-baja para evitar alucinaciones
                 "top_p": 0.9
             }
         }
@@ -239,14 +247,84 @@ RECUERDOS VERIFICADOS:
                 res = await client.post(endpoint, json=payload)
                 if res.status_code == 200:
                     data = res.json()
-                    return data.get("message", {}).get("content", "").strip()
+                    content = data.get("message", {}).get("content", "").strip()
+                    return content, "generated", settings.OLLAMA_MODEL
+                elif res.status_code == 404:
+                    logger.error(f"Modelo '{settings.OLLAMA_MODEL}' no encontrado en Ollama ({res.status_code}).")
+                    return (
+                        f"Mijito lindo, mis recuerdos están guardados, pero el modelo de IA '{settings.OLLAMA_MODEL}' "
+                        f"no está descargado en el contenedor de Ollama. Ejecuta 'docker exec -it legadovivo_ollama ollama pull {settings.OLLAMA_MODEL}' para activarlo.",
+                        "model_not_found",
+                        None
+                    )
                 else:
                     logger.error(f"Error devuelto por Ollama ({res.status_code}): {res.text}")
-                    return "Hijo querido, tengo un poco de dificultad para responder en este instante, pero recuerda cuánto te quiero."
+                    return (
+                        "Hijo querido, tengo un poco de dificultad técnica con el motor neuronal en este instante, pero recuerda cuánto te quiero.",
+                        "fallback",
+                        None
+                    )
         except Exception as e:
             logger.warning(f"Ollama no está activo en {settings.OLLAMA_HOST}: {e}")
             return (
                 f"Mijito lindo, mis recuerdos sobre esto están a salvo en mi legado, pero el motor neuronal de Ollama ({settings.OLLAMA_MODEL}) "
-                "no está iniciado en tu equipo. Ejecuta 'ollama run llama3:8b' en una terminal para escuchar mi respuesta generada con mi propia voz."
+                f"no está respondiendo en {settings.OLLAMA_HOST}. Verifica que el contenedor 'legadovivo_ollama' esté corriendo.",
+                "ollama_unavailable",
+                None
             )
+
+    @classmethod
+    async def check_ollama_health(cls) -> Dict[str, Any]:
+        """
+        Comprueba activamente si el servidor Ollama responde
+        y si el modelo configurado (p. ej. llama3:8b) se encuentra descargado.
+        """
+        endpoint = f"{settings.OLLAMA_HOST}/api/tags"
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                res = await client.get(endpoint)
+                if res.status_code == 200:
+                    data = res.json()
+                    raw_models = data.get("models", [])
+                    model_names = [m.get("name") for m in raw_models if isinstance(m, dict)]
+
+                    target = settings.OLLAMA_MODEL.lower()
+                    target_base = target.split(":")[0]
+
+                    # Validar coincidencia exacta o por nombre base
+                    model_found = any(
+                        target == (m or "").lower() or (m or "").lower().startswith(f"{target_base}:")
+                        for m in model_names
+                    )
+
+                    return {
+                        "status": "healthy" if model_found else "degraded",
+                        "service_ready": True,
+                        "host": settings.OLLAMA_HOST,
+                        "target_model": settings.OLLAMA_MODEL,
+                        "model_downloaded": model_found,
+                        "installed_models": model_names,
+                        "message": "Modelo listo y cargado" if model_found else f"Ollama en línea pero falta descargar el modelo '{settings.OLLAMA_MODEL}'."
+                    }
+                else:
+                    return {
+                        "status": "unhealthy",
+                        "service_ready": False,
+                        "host": settings.OLLAMA_HOST,
+                        "target_model": settings.OLLAMA_MODEL,
+                        "model_downloaded": False,
+                        "installed_models": [],
+                        "error": f"Ollama respondió con código HTTP {res.status_code}"
+                    }
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "service_ready": False,
+                "host": settings.OLLAMA_HOST,
+                "target_model": settings.OLLAMA_MODEL,
+                "model_downloaded": False,
+                "installed_models": [],
+                "error": f"No se pudo conectar a Ollama en {settings.OLLAMA_HOST}: {str(e)}"
+            }
+
 

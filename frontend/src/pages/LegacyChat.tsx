@@ -21,6 +21,9 @@ interface MessageItem {
   timestamp: string;
   sources?: string[];
   confidence?: number;
+  llm_status?: string;
+  model_used?: string | null;
+  is_simulated?: boolean;
 }
 
 export const LegacyChat: React.FC = () => {
@@ -36,14 +39,26 @@ export const LegacyChat: React.FC = () => {
       sender: 'assistant',
       text: `Mijito lindo, qué alegría que estés aquí. Aunque el tiempo pase, siempre estaré contigo a través de mis recuerdos. ¿De qué te gustaría que conversemos hoy?`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      sources: ['Mensaje de bienvenida afectuosa']
+      sources: ['Mensaje de bienvenida afectuosa'],
+      llm_status: 'welcome'
     }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
+  const [backendStatus, setBackendStatus] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Comprobar estado del backend al abrir el chat
+  useEffect(() => {
+    async function checkHealth() {
+      const h = await api.getHealth();
+      setBackendStatus(h.status);
+    }
+    checkHealth();
+  }, []);
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -142,7 +157,10 @@ export const LegacyChat: React.FC = () => {
         text: res.response,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         sources: res.sources,
-        confidence: res.confidence
+        confidence: res.confidence,
+        llm_status: res.llm_status,
+        model_used: res.model_used,
+        is_simulated: res.is_simulated
       };
       setMessages(prev => [...prev, botMsg]);
     } catch (err) {
@@ -248,10 +266,33 @@ export const LegacyChat: React.FC = () => {
                 )}
               </div>
 
-              {/* Fuentes y Regla de Negocio */}
+              {/* Fuentes, Estado de Inferencia y Regla de Negocio */}
               {m.sender === 'assistant' && (
-                <div className="mt-3 pt-2.5 border-t border-stone-100 flex items-center justify-between text-[11px] text-stone-400 font-sans">
-                  <div className="flex items-center gap-1.5">
+                <div className="mt-3 pt-2.5 border-t border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-stone-400 font-sans">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Indicador de procedencia del mensaje */}
+                    {m.is_simulated || m.llm_status === 'mock_simulation' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-semibold text-[10px]">
+                        <AlertCircle className="w-3 h-3 text-amber-700" />
+                        Simulación Local (Backend Desconectado)
+                      </span>
+                    ) : m.llm_status === 'generated' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 font-semibold text-[10px]">
+                        <Sparkles className="w-3 h-3 text-emerald-600" />
+                        Generado por Ollama ({m.model_used || 'llama3:8b'})
+                      </span>
+                    ) : m.llm_status === 'model_not_found' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-300 font-semibold text-[10px]">
+                        <AlertCircle className="w-3 h-3 text-rose-600" />
+                        Modelo no descargado en Ollama
+                      </span>
+                    ) : m.llm_status === 'ollama_unavailable' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 font-semibold text-[10px]">
+                        <AlertCircle className="w-3 h-3 text-amber-600" />
+                        Ollama Inaccesible (Respuesta Respaldo)
+                      </span>
+                    ) : null}
+
                     {m.sources && m.sources.length > 0 ? (
                       <>
                         <BookOpen className="w-3 h-3 text-amber-600" />
@@ -268,7 +309,7 @@ export const LegacyChat: React.FC = () => {
                       </>
                     )}
                   </div>
-                  <span className="text-[10px] text-stone-400">{m.timestamp}</span>
+                  <span className="text-[10px] text-stone-400 self-end sm:self-auto">{m.timestamp}</span>
                 </div>
               )}
             </div>

@@ -24,9 +24,11 @@ services:
       postgres:
         condition: service_healthy
       mongodb:
-        condition: service_started
+        condition: service_healthy
       chromadb:
-        condition: service_started
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
     networks:
       - legado_net
 
@@ -67,6 +69,12 @@ services:
       - "${MONGO_PORT:-27017}:27017"
     volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - legado_net
 
@@ -81,6 +89,33 @@ services:
       - "${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - legado_net
+
+  # ==========================================
+  # Model Downloader: Descarga automática reproducible
+  # ==========================================
+  ollama_pull:
+    image: ollama/ollama:latest
+    container_name: legadovivo_ollama_pull
+    restart: "no"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Verificando y descargando modelo $${OLLAMA_MODEL:-llama3:8b} en Ollama..."
+        ollama pull $${OLLAMA_MODEL:-llama3:8b}
+        echo "Modelo listo en Ollama."
+    depends_on:
+      ollama:
+        condition: service_healthy
     networks:
       - legado_net
 
@@ -99,6 +134,12 @@ services:
       - IS_PERSISTENT=TRUE
       - PERSIST_DIRECTORY=/chroma/chroma
       - ANONYMIZED_TELEMETRY=FALSE
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/heartbeat || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - legado_net
 
@@ -115,3 +156,4 @@ volumes:
 networks:
   legado_net:
     driver: bridge
+

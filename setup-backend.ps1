@@ -9,22 +9,34 @@ Write-Host ""
 $BackendDir = Join-Path $PSScriptRoot "backend"
 Set-Location $BackendDir
 
-Write-Host "[1/3] Verificando instalacion de Python..." -ForegroundColor Cyan
+Write-Host "[1/3] Verificando instalacion funcional de Python..." -ForegroundColor Cyan
 
 $PythonExe = $null
-if (Get-Command python -ErrorAction SilentlyContinue) {
-    $PythonExe = "python"
-}
-elseif (Get-Command py -ErrorAction SilentlyContinue) {
-    $PythonExe = "py"
+
+try {
+    $ver = & python --version 2>&1
+    if ($LASTEXITCODE -eq 0 -and $ver -match "Python") {
+        $PythonExe = "python"
+    }
+} catch {}
+
+if (-not $PythonExe) {
+    try {
+        $ver = & py -3 --version 2>&1
+        if ($LASTEXITCODE -eq 0 -and $ver -match "Python") {
+            $PythonExe = "py"
+        }
+    } catch {}
 }
 
 if (-not $PythonExe) {
-    Write-Host "[ERROR] No se encontro Python en tu sistema." -ForegroundColor Red
+    Write-Host "[ERROR] No se encontro una instalacion funcional de Python en tu sistema." -ForegroundColor Red
+    Write-Host "Nota: El alias predeterminado de Windows Store no cuenta con Python instalado." -ForegroundColor Yellow
     Write-Host "Por favor instala Python 3.11 o 3.12 desde: https://www.python.org/downloads/" -ForegroundColor Yellow
     Write-Host "Recuerda marcar la casilla: 'Add python.exe to PATH'" -ForegroundColor Yellow
     exit 1
 }
+
 
 Write-Host "Python detectado ($PythonExe)." -ForegroundColor Green
 Write-Host ""

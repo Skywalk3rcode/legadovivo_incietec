@@ -1,4 +1,5 @@
 import logging
+from typing import Dict, Any
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from app.core.config import settings
@@ -6,11 +7,12 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _chroma_client = None
+_client_mode = None
 
 
 def get_chroma_client():
     """Retorna un cliente singleton de ChromaDB (vía HTTP o almacenamiento local)."""
-    global _chroma_client
+    global _chroma_client, _client_mode
     if _chroma_client is None:
         try:
             # Intento de conexión al servidor ChromaDB levantado en Docker
@@ -21,6 +23,7 @@ def get_chroma_client():
             )
             # Verificación de conexión
             _chroma_client.heartbeat()
+            _client_mode = "http"
             logger.info(f"Conectado exitosamente al servidor ChromaDB en {settings.CHROMA_HOST}:{settings.CHROMA_PORT}")
         except Exception as e:
             logger.warning(
@@ -30,6 +33,7 @@ def get_chroma_client():
                 path=settings.CHROMA_PERSIST_DIRECTORY,
                 settings=ChromaSettings(anonymized_telemetry=False)
             )
+            _client_mode = "persistent"
     return _chroma_client
 
 
@@ -40,4 +44,28 @@ def get_chroma_collection(collection_name: str = "legado_capsules"):
         name=collection_name,
         metadata={"hnsw:space": "cosine"}
     )
+
+
+def check_chroma_health() -> Dict[str, Any]:
+    """Verifica el estado de salud de ChromaDB."""
+    try:
+        client = get_chroma_client()
+        heartbeat = client.heartbeat()
+        collections = client.list_collections()
+        col_names = [c.name for c in collections]
+        return {
+            "status": "healthy",
+            "connected": True,
+            "mode": _client_mode or "unknown",
+            "heartbeat": heartbeat,
+            "collections": col_names
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "connected": False,
+            "mode": _client_mode or "unknown",
+            "error": str(e)
+        }
+
 

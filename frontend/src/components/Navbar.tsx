@@ -14,7 +14,8 @@ import {
 export const Navbar: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
-  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
+  const [backendHealth, setBackendHealth] = useState<'healthy' | 'degraded' | 'offline' | null>(null);
+  const [healthNote, setHealthNote] = useState<string>('');
 
   useEffect(() => {
     async function checkBackend() {
@@ -22,12 +23,23 @@ export const Navbar: React.FC = () => {
         const res = await fetch('/api/health', { method: 'GET' });
         if (res.ok) {
           const data = await res.json();
-          setBackendOnline(data.status === 'healthy');
+          if (data.status === 'healthy') {
+            setBackendHealth('healthy');
+            setHealthNote('FastAPI, bases de datos y Ollama conectados');
+          } else if (data.status === 'degraded') {
+            setBackendHealth('degraded');
+            setHealthNote(data.diagnostic_notes?.join(' | ') || 'Modo desarrollo con contingencias');
+          } else {
+            setBackendHealth('offline');
+            setHealthNote('Backend no saludable');
+          }
         } else {
-          setBackendOnline(false);
+          setBackendHealth('offline');
+          setHealthNote('Backend no responde en puerto 8080');
         }
       } catch {
-        setBackendOnline(false);
+        setBackendHealth('offline');
+        setHealthNote('Backend no accesible; interfaz en modo demostración local');
       }
     }
     checkBackend();
@@ -60,14 +72,25 @@ export const Navbar: React.FC = () => {
             </div>
             
             {/* Indicador de Estado del Backend */}
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className={`w-2 h-2 rounded-full ${backendOnline ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
+            <div className="flex items-center gap-2 mt-0.5" title={healthNote}>
+              <span className={`w-2 h-2 rounded-full ${
+                backendHealth === 'healthy' 
+                  ? 'bg-emerald-500' 
+                  : backendHealth === 'degraded'
+                    ? 'bg-amber-400'
+                    : 'bg-rose-500 animate-pulse'
+              }`} />
               <span className="text-[11px] text-stone-500">
-                {backendOnline ? 'Backend Activo (FastAPI)' : 'Modo Demostración Local'}
+                {backendHealth === 'healthy'
+                  ? 'Backend Activo (FastAPI + Ollama)'
+                  : backendHealth === 'degraded'
+                    ? 'Backend Parcial (Ver notas)'
+                    : 'Modo Demostración Local'}
               </span>
             </div>
           </div>
         </Link>
+
 
         {/* Navigation */}
         <nav className="flex items-center gap-1 sm:gap-2">

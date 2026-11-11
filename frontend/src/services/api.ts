@@ -52,7 +52,25 @@ export interface ChatResponse {
   sources: string[];
   confidence: number;
   matched_memories: number;
+  llm_status?: 'generated' | 'no_memories' | 'model_not_found' | 'ollama_unavailable' | 'fallback' | 'mock_simulation';
+  model_used?: string | null;
+  is_simulated?: boolean;
 }
+
+export interface HealthResponse {
+  status: 'healthy' | 'degraded' | 'unhealthy' | 'offline';
+  service?: string;
+  version?: string;
+  environment?: string;
+  dependencies?: {
+    database?: { status: string; dialect: string; fallback_sqlite?: boolean; connected: boolean };
+    mongodb?: { status: string; connected: boolean; database?: string };
+    chromadb?: { status: string; mode: string; connected: boolean };
+    ollama?: { status: string; service_ready: boolean; model_downloaded: boolean; target_model: string };
+  };
+  diagnostic_notes?: string[];
+}
+
 
 export interface StyleProfile {
   typical_phrases: string[];
@@ -343,6 +361,22 @@ export const api = {
     };
   },
 
+  async getHealth(): Promise<HealthResponse> {
+    try {
+      const res = await fetch(`${API_BASE}/health`);
+      if (res.ok) {
+        const data = await res.json();
+        isBackendAvailable = data.status === 'healthy' || data.status === 'degraded';
+        return data;
+      }
+      isBackendAvailable = false;
+      return { status: 'offline', diagnostic_notes: ['El backend respondió con error HTTP'] };
+    } catch {
+      isBackendAvailable = false;
+      return { status: 'offline', diagnostic_notes: ['No se pudo contactar al backend FastAPI en :8080'] };
+    }
+  },
+
   async sendChatMessage(message: string, titularName: string = "Abuelo", titularId?: string): Promise<ChatResponse> {
     try {
       const res = await fetch(`${API_BASE}/chat/`, {
@@ -350,12 +384,21 @@ export const api = {
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({ message, titular_name: titularName, titular_id: titularId })
       });
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        isBackendAvailable = true;
+        return {
+          ...data,
+          is_simulated: false
+        };
+      } else {
+        isBackendAvailable = false;
+      }
     } catch {
-      // Fallback
+      isBackendAvailable = false;
     }
 
-    // Simulación RAG + Cero Alucinación
+    // Simulación RAG + Cero Alucinación local (cuando backend está desconectado)
     const lower = message.toLowerCase();
     const matched = LOCAL_CAPSULES.filter(c => {
       const inTitle = c.title.toLowerCase().split(/\s+/).some(w => w.length > 3 && lower.includes(w));
@@ -370,7 +413,10 @@ export const api = {
         response: `Mijito lindo, qué alegría que me preguntes eso. Mira, te cuento: ${best.content.replace(/^.*?te cuento que\s*/i, '')} Guardo este recuerdo con todo mi cariño en el alma.`,
         sources: [best.title],
         confidence: 0.94,
-        matched_memories: matched.length
+        matched_memories: matched.length,
+        llm_status: 'mock_simulation',
+        model_used: null,
+        is_simulated: true
       };
     } else {
       const suggested = LOCAL_CAPSULES.length > 0 
@@ -380,7 +426,10 @@ export const api = {
         response: `No dejé registros sobre este tema específico en mi legado, pero me encantaría que recordáramos "${suggested}".`,
         sources: [],
         confidence: 0.0,
-        matched_memories: 0
+        matched_memories: 0,
+        llm_status: 'mock_simulation',
+        model_used: null,
+        is_simulated: true
       };
     }
   }

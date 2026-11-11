@@ -1,12 +1,26 @@
 import os
-from typing import List
+from typing import List, Union
+from pathlib import Path
+
+# Directorio raíz del proyecto y del backend
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+PROJECT_ROOT = BACKEND_DIR.parent
 
 try:
     from pydantic_settings import BaseSettings, SettingsConfigDict
+    from pydantic import field_validator
     USE_PYDANTIC_SETTINGS = True
 except ImportError:
     from pydantic import BaseModel
     USE_PYDANTIC_SETTINGS = False
+
+
+def _parse_origins(v: Union[str, List[str], None]) -> List[str]:
+    if not v:
+        return ["http://localhost:5173", "http://localhost:3000"]
+    if isinstance(v, str):
+        return [o.strip() for o in v.split(",") if o.strip()]
+    return list(v)
 
 
 if USE_PYDANTIC_SETTINGS:
@@ -25,6 +39,9 @@ if USE_PYDANTIC_SETTINGS:
         POSTGRES_DB: str = "legadovivo_db"
         POSTGRES_URL: str = "postgresql+psycopg2://legado_admin:legado_secure_pass_2026@localhost:5432/legadovivo_db"
 
+        # SQLite de Respaldo Local (Ruta predecible)
+        SQLITE_DB_PATH: str = str(PROJECT_ROOT / "legadovivo_dev.db")
+
         # MongoDB
         MONGO_HOST: str = "localhost"
         MONGO_PORT: int = 27017
@@ -34,7 +51,7 @@ if USE_PYDANTIC_SETTINGS:
         # ChromaDB
         CHROMA_HOST: str = "localhost"
         CHROMA_PORT: int = 8000
-        CHROMA_PERSIST_DIRECTORY: str = "./chroma_storage"
+        CHROMA_PERSIST_DIRECTORY: str = str(PROJECT_ROOT / "chroma_storage")
 
         # Ollama & Embeddings
         OLLAMA_HOST: str = "http://localhost:11434"
@@ -47,7 +64,12 @@ if USE_PYDANTIC_SETTINGS:
         ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 días
 
         # CORS
-        ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+        ALLOWED_ORIGINS: Union[str, List[str]] = ["http://localhost:5173", "http://localhost:3000"]
+
+        @field_validator("ALLOWED_ORIGINS", mode="before")
+        @classmethod
+        def validate_allowed_origins(cls, v):
+            return _parse_origins(v)
 
         model_config = SettingsConfigDict(
             env_file=".env",
@@ -76,6 +98,9 @@ else:
             "postgresql+psycopg2://legado_admin:legado_secure_pass_2026@localhost:5432/legadovivo_db"
         )
 
+        # SQLite de Respaldo Local (Ruta predecible)
+        SQLITE_DB_PATH: str = os.getenv("SQLITE_DB_PATH", str(PROJECT_ROOT / "legadovivo_dev.db"))
+
         # MongoDB
         MONGO_HOST: str = os.getenv("MONGO_HOST", "localhost")
         MONGO_PORT: int = int(os.getenv("MONGO_PORT", 27017))
@@ -88,7 +113,7 @@ else:
         # ChromaDB
         CHROMA_HOST: str = os.getenv("CHROMA_HOST", "localhost")
         CHROMA_PORT: int = int(os.getenv("CHROMA_PORT", 8000))
-        CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_storage")
+        CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", str(PROJECT_ROOT / "chroma_storage"))
 
         # Ollama & Embeddings
         OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
@@ -101,6 +126,7 @@ else:
         ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 7))
 
         # CORS
-        ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+        ALLOWED_ORIGINS: List[str] = _parse_origins(os.getenv("ALLOWED_ORIGINS"))
 
     settings = Settings()
+
