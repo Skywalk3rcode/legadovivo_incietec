@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # Backend API & Motor Neuronal (FastAPI)
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: legadovivo_backend
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8080}:8080"
+    environment:
+      - POSTGRES_URL=postgresql+psycopg2://${POSTGRES_USER:-legado_admin}:${POSTGRES_PASSWORD:-legado_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-legadovivo_db}
+      - MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME:-mongo_admin}:${MONGO_INITDB_ROOT_PASSWORD:-mongo_secure_pass_2026}@mongodb:27017/?authSource=admin
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3:8b}
+      - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+      chromadb:
+        condition: service_started
+    networks:
+      - legado_net
+
+  # ==========================================
+  # Relational Database: PostgreSQL
+  # ==========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: legadovivo_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-legado_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-legado_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-legadovivo_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-legado_admin} -d ${POSTGRES_DB:-legadovivo_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - legado_net
+
+  # ==========================================
+  # Document Database: MongoDB
+  # ==========================================
+  mongodb:
+    image: mongo:7.0
+    container_name: legadovivo_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-mongo_admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-mongo_secure_pass_2026}
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - legado_net
+
+  # ==========================================
+  # Local LLM Engine: Ollama
+  # ==========================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: legadovivo_ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - legado_net
+
+  # ==========================================
+  # Vector Database: ChromaDB
+  # ==========================================
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: legadovivo_chromadb
+    restart: unless-stopped
+    ports:
+      - "${CHROMA_PORT:-8000}:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - legado_net
+
+volumes:
+  postgres_data:
+    driver: local
+  mongo_data:
+    driver: local
+  ollama_data:
+    driver: local
+  chroma_data:
+    driver: local
+
+networks:
+  legado_net:
+    driver: bridge
