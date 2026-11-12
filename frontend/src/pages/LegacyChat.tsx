@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api, ChatResponse } from '../services/api';
-import { 
-  Send, 
-  Sparkles, 
-  BookOpen, 
-  AlertCircle, 
-  RefreshCw, 
+import {
+  Send,
+  Sparkles,
+  BookOpen,
+  AlertCircle,
+  RefreshCw,
   ArrowLeft,
   Volume2,
   VolumeX,
@@ -28,7 +28,7 @@ export const LegacyChat: React.FC = () => {
   const navigate = useNavigate();
 
   const activeTitularName = (location.state as any)?.titularName || "Abuelo Alberto";
-  const activeTitularId = (location.state as any)?.titularId || "titular-demo-12345";
+  const activeTitularId = (location.state as any)?.titularId;
 
   const [messages, setMessages] = useState<MessageItem[]>([
     {
@@ -160,7 +160,7 @@ export const LegacyChat: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 h-[calc(100vh-5rem)] flex flex-col">
-      
+
       {/* Encabezado del Legado */}
       <div className="bg-white rounded-3xl p-4 sm:p-5 border border-stone-200/90 shadow-sm flex items-center justify-between mb-4">
         <div className="flex items-center gap-3.5">
@@ -204,11 +204,10 @@ export const LegacyChat: React.FC = () => {
           <button
             key={idx}
             onClick={() => handleSend(q.text)}
-            className={`px-3 py-1.5 rounded-xl border transition flex-shrink-0 cursor-pointer ${
-              q.type === 'hit'
+            className={`px-3 py-1.5 rounded-xl border transition flex-shrink-0 cursor-pointer ${q.type === 'hit'
                 ? 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'
                 : 'bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100'
-            }`}
+              }`}
           >
             {q.label}
           </button>
@@ -223,15 +222,14 @@ export const LegacyChat: React.FC = () => {
             className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}
           >
             <div
-              className={`max-w-[85%] sm:max-w-[75%] rounded-3xl p-4 sm:p-5 shadow-sm text-sm leading-relaxed ${
-                m.sender === 'user'
+              className={`max-w-[85%] sm:max-w-[75%] rounded-3xl p-4 sm:p-5 shadow-sm text-sm leading-relaxed ${m.sender === 'user'
                   ? 'bg-amber-800 text-white rounded-br-none'
                   : 'bg-white text-stone-800 border border-stone-200/80 rounded-bl-none font-serif-warm'
-              }`}
+                }`}
             >
               <div className="flex items-start justify-between gap-3">
                 <p className="whitespace-pre-wrap flex-1">{m.text}</p>
-                
+
                 {/* Botón de Escuchar con Voz Cálida */}
                 {m.sender === 'assistant' && (
                   <button
@@ -301,20 +299,18 @@ export const LegacyChat: React.FC = () => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={listening ? "Escuchando tu voz..." : "Escribe tu pregunta o saludo a tu ser querido..."}
-            className={`w-full pl-5 pr-12 py-4 rounded-2xl bg-white border text-stone-900 placeholder-stone-400 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-amber-500/20 ${
-              listening ? 'border-rose-400 ring-2 ring-rose-200' : 'border-stone-200 focus:border-amber-600'
-            }`}
+            className={`w-full pl-5 pr-12 py-4 rounded-2xl bg-white border text-stone-900 placeholder-stone-400 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-amber-500/20 ${listening ? 'border-rose-400 ring-2 ring-rose-200' : 'border-stone-200 focus:border-amber-600'
+              }`}
           />
-          
+
           <button
             type="button"
             onClick={handleVoiceInput}
             title={listening ? "Detener dictado" : "Dictar con tu voz"}
-            className={`absolute right-3 p-2 rounded-xl transition cursor-pointer ${
-              listening 
-                ? 'bg-rose-100 text-rose-700 animate-pulse' 
+            className={`absolute right-3 p-2 rounded-xl transition cursor-pointer ${listening
+                ? 'bg-rose-100 text-rose-700 animate-pulse'
                 : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'
-            }`}
+              }`}
           >
             {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
           </button>
