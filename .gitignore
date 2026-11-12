@@ -9,3 +9,4 @@ dist/
 
 # Variables de entorno (¡Muy importante!)
 .env
+backend/chroma_storage/
