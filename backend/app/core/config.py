@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Union
 from pydantic import field_validator
 
 try:
@@ -19,7 +19,7 @@ if USE_PYDANTIC_SETTINGS:
 
         # PostgreSQL en PC local (sin Docker)
         POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
-        POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "1040572521")
+        POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "12345")
         POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
         POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", "5432"))
         POSTGRES_DB: str = os.getenv("POSTGRES_DB", "legadovivo_db")
@@ -42,21 +42,30 @@ if USE_PYDANTIC_SETTINGS:
         OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3:8b")
         EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
 
+        # Supabase Auth
+        SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+        SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
+        SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
+
         # Seguridad y JWT
         SECRET_KEY: str = "legadovivo_super_secret_jwt_key_2026_change_in_production"
         ALGORITHM: str = "HS256"
         ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 días
 
         # CORS
-        ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+        ALLOWED_ORIGINS: Union[List[str], str] = ["http://localhost:5173", "http://localhost:3000"]
 
         @field_validator("ALLOWED_ORIGINS", mode="before")
         @classmethod
         def parse_cors_origins(cls, v):
             if isinstance(v, str):
-                if v.startswith("[") and v.endswith("]"):
+                v_clean = v.strip()
+                if v_clean.startswith("[") and v_clean.endswith("]"):
                     import json
-                    return json.loads(v)
+                    try:
+                        return json.loads(v_clean)
+                    except Exception:
+                        pass
                 return [origin.strip() for origin in v.split(",") if origin.strip()]
             return v
 
@@ -78,7 +87,7 @@ else:
 
         # PostgreSQL en PC local
         POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
-        POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "1040572521")
+        POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "12345")
         POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
         POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", "5432"))
         POSTGRES_DB: str = os.getenv("POSTGRES_DB", "legadovivo_db")
@@ -100,6 +109,11 @@ else:
         OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3:8b")
         EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
+
+        # Supabase Auth
+        SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+        SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
+        SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
 
         # Seguridad y JWT
         SECRET_KEY: str = os.getenv("SECRET_KEY", "legadovivo_super_secret_jwt_key_2026_change_in_production")

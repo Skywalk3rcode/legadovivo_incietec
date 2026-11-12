@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { BookHeart, Lock, Mail, ArrowRight, Sparkles } from 'lucide-react';
+import { BookHeart, Lock, Mail, ArrowRight, AlertCircle, Shield } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -9,7 +9,7 @@ export const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const { login } = useAuth();
+  const { login, isConfigured } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -24,7 +24,7 @@ export const Login: React.FC = () => {
       await login(email, password);
       navigate(from, { replace: true });
     } catch (err: any) {
-      setError(err?.message || 'Error al iniciar sesión. Verifique sus credenciales.');
+      setError(err?.message || 'Error al iniciar sesión con Supabase. Verifique sus credenciales.');
     } finally {
       setLoading(false);
     }
@@ -46,6 +46,19 @@ export const Login: React.FC = () => {
             Ingresa a tu espacio para cuidar tus recuerdos o conversar con tus seres queridos.
           </p>
         </div>
+
+        {/* Alerta si falta configurar las variables de entorno de Supabase */}
+        {!isConfigured && (
+          <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-amber-950 mb-1">Configuración de Supabase pendiente</p>
+              <p className="text-amber-800">
+                Para autenticarte con Supabase Auth, define <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-[11px]">VITE_SUPABASE_URL</code> y <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-[11px]">VITE_SUPABASE_ANON_KEY</code> en tu archivo <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-[11px]">.env</code>.
+              </p>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="mb-6 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
@@ -90,14 +103,14 @@ export const Login: React.FC = () => {
 
           <button
             type="submit"
-            disabled={loading || !email || !password}
+            disabled={loading || !email || !password || !isConfigured}
             className="w-full py-3.5 px-6 rounded-2xl bg-amber-800 hover:bg-amber-900 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-md shadow-amber-900/20 disabled:opacity-50 transition cursor-pointer"
           >
             {loading ? (
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
               <>
-                <span>Ingresar a mi Cuenta</span>
+                <span>Ingresar</span>
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
@@ -111,26 +124,12 @@ export const Login: React.FC = () => {
           </Link>
         </div>
 
-        {/* Demo Fast Fill */}
-        <div className="mt-4 p-3 bg-amber-50/60 rounded-xl border border-amber-200/50 flex items-center justify-between text-[11px] text-amber-900">
-          <span className="flex items-center gap-1.5 font-medium">
-            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            Acceso Rápido Demo:
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              setEmail('alberto@legadovivo.com');
-              setPassword('clave123');
-            }}
-            className="underline font-semibold cursor-pointer text-amber-800 hover:text-amber-900"
-          >
-            Autocompletar
-          </button>
+        <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-stone-400">
+          <Shield className="w-3.5 h-3.5 text-stone-400" />
+          <span>Autenticación gestionada por Supabase Auth</span>
         </div>
 
       </div>
     </div>
   );
 };
-
