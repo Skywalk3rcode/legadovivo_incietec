@@ -52,6 +52,11 @@ if USE_PYDANTIC_SETTINGS:
         ALGORITHM: str = "HS256"
         ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 días
 
+        # Vinculación por Códigos & Seguridad
+        INVITE_CODE_EXPIRATION_HOURS: int = int(os.getenv("INVITE_CODE_EXPIRATION_HOURS", "48"))
+        MAX_CODE_ATTEMPTS: int = int(os.getenv("MAX_CODE_ATTEMPTS", "5"))
+        CODE_ATTEMPT_LOCKOUT_MINUTES: int = int(os.getenv("CODE_ATTEMPT_LOCKOUT_MINUTES", "15"))
+
         # CORS
         ALLOWED_ORIGINS: Union[List[str], str] = ["http://localhost:5173", "http://localhost:3000"]
 
@@ -119,6 +124,11 @@ else:
         SECRET_KEY: str = os.getenv("SECRET_KEY", "legadovivo_super_secret_jwt_key_2026_change_in_production")
         ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
         ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
+
+        # Vinculación por Códigos & Seguridad
+        INVITE_CODE_EXPIRATION_HOURS: int = int(os.getenv("INVITE_CODE_EXPIRATION_HOURS", "48"))
+        MAX_CODE_ATTEMPTS: int = int(os.getenv("MAX_CODE_ATTEMPTS", "5"))
+        CODE_ATTEMPT_LOCKOUT_MINUTES: int = int(os.getenv("CODE_ATTEMPT_LOCKOUT_MINUTES", "15"))
 
         # CORS
         ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]

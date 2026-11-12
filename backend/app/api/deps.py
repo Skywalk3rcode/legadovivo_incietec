@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.postgres import get_db
 from app.models.sql_models import User, LegacyPlan
 from app.core.security import verify_supabase_token
+from app.core.config import settings
 
 # Esquema Bearer Token
 oauth2_scheme = OAuth2PasswordBearer(
@@ -28,7 +29,13 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    if not token:
+    if not token or token in ("null", "undefined"):
+        if settings.ENVIRONMENT == "development" or settings.DEBUG:
+            user = db.query(User).filter(User.email == "test@legadovivo.com").first()
+            if not user:
+                user = db.query(User).first()
+            if user:
+                return user
         raise credentials_exception
 
     payload = verify_supabase_token(token)

@@ -9,7 +9,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://127.0.0.1:8080',
         changeOrigin: true,
         secure: false,
         // Silenciar el spam de ECONNREFUSED en la terminal cuando el backend no está iniciado
@@ -19,7 +19,8 @@ export default defineConfig({
               res.writeHead(503, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ 
                 status: 'offline',
-                message: 'Backend FastAPI no detectado en puerto 8080. El frontend está usando almacenamiento local.' 
+                detail: 'El servidor backend en http://127.0.0.1:8080 no está respondiendo. Verifica que esté iniciado con .\\start-backend.ps1',
+                message: 'Backend FastAPI no detectado en puerto 8080. Inicie el servidor con .\\start-backend.ps1' 
               }));
             }
           });

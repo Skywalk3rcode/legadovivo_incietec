@@ -36,11 +36,7 @@ def ensure_postgres_database_exists():
         cursor.close()
         conn.close()
     except Exception as e:
-        try:
-            err_msg = str(e)
-        except Exception:
-            err_msg = repr(e)
-        logger.warning(f"Aviso al verificar base de datos en PostgreSQL: {err_msg}")
+        logger.warning(f"Aviso al verificar base de datos en PostgreSQL: {e}")
 
 
 def get_engine():
@@ -68,9 +64,14 @@ def get_db():
 
 
 def init_sql_db():
-    """Crea todas las tablas (users, legacy_connections, legacy_plans, audit_logs) en PostgreSQL."""
+    """Crea todas las tablas (users, legacy_connections, legacy_plans, audit_logs, code_attempts) en PostgreSQL."""
     try:
         Base.metadata.create_all(bind=engine)
         logger.info(f"Tablas de PostgreSQL creadas/verificadas con éxito en '{settings.POSTGRES_DB}'.")
+        try:
+            from app.scripts.migrate_linking_system import run_linking_migration
+            run_linking_migration()
+        except Exception as e_mig:
+            logger.warning(f"Aviso ejecutando migración del sistema de vinculación: {e_mig}")
     except Exception as e:
         logger.error(f"Error inicializando tablas en PostgreSQL: {e}")

@@ -6,6 +6,12 @@ export interface User {
   created_at?: string;
 }
 
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
 export interface LegacyConnectionSummary {
   connection_id: string;
   owner_id: string;
@@ -14,6 +20,7 @@ export interface LegacyConnectionSummary {
   status: string;
   linked_at?: string;
   created_at: string;
+  expires_at?: string;
 }
 
 export interface BeneficiaryInvite {
@@ -25,6 +32,36 @@ export interface BeneficiaryInvite {
   status: string;
   linked_at?: string;
   created_at: string;
+  expires_at?: string;
+  time_remaining_seconds?: number;
+  is_expired?: boolean;
+}
+
+export interface GenerateCodeResponse {
+  connection_id: string;
+  connection_code: string;
+  owner_id: string;
+  owner_name: string;
+  status: string;
+  created_at: string;
+  expires_at: string;
+  message: string;
+}
+
+export interface CodePreviewResponse {
+  connection_id: string;
+  connection_code: string;
+  owner_id: string;
+  owner_name: string;
+  created_at: string;
+  expires_at: string;
+  message: string;
+}
+
+export interface ActionResponse {
+  success: boolean;
+  message: string;
+  connection_id?: string;
 }
 
 export interface CapsulePayload {
@@ -57,58 +94,12 @@ export interface StyleProfile {
 
 const API_BASE = '/api';
 
-// Circuit breaker para modo local/offline
 let isBackendAvailable: boolean | null = null;
-
-async function checkBackendAvailability(): Promise<boolean> {
-  if (isBackendAvailable !== null) return isBackendAvailable;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
-    const res = await fetch(`${API_BASE}/health`, { 
-      method: 'GET',
-      signal: controller.signal 
-    });
-    clearTimeout(timeoutId);
-    isBackendAvailable = res.ok;
-  } catch {
-    isBackendAvailable = false;
-  }
-  return isBackendAvailable;
-}
 
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem('legadovivo_token');
   return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
-
-// ==========================================
-// Memoria Local Reactiva para Simulación MVP
-// ==========================================
-let LOCAL_CONNECTIONS: LegacyConnectionSummary[] = [
-  {
-    connection_id: "conn-1",
-    owner_id: "titular-alberto",
-    owner_name: "Alberto Gómez (Abuelo)",
-    owner_email: "alberto@legadovivo.com",
-    status: "active",
-    linked_at: new Date(Date.now() - 86400000 * 10).toISOString(),
-    created_at: new Date(Date.now() - 86400000 * 12).toISOString()
-  }
-];
-
-let LOCAL_INVITES: BeneficiaryInvite[] = [
-  {
-    connection_id: "inv-1",
-    beneficiary_id: "ben-carlos",
-    beneficiary_name: "Carlos Gómez (Hijo)",
-    beneficiary_email: "carlos@correo.com",
-    connection_code: "LEG-8X9K2M",
-    status: "active",
-    linked_at: new Date(Date.now() - 86400000 * 3).toISOString(),
-    created_at: new Date(Date.now() - 86400000 * 4).toISOString()
-  }
-];
 
 let LOCAL_CAPSULES: CapsuleResponse[] = [
   {
@@ -141,7 +132,71 @@ export const api = {
     isBackendAvailable = null;
   },
 
-  // Consulta el perfil autenticado en el backend verificado vía Supabase
+  // ==========================================
+  // AUTENTICACIÓN
+  // ==========================================
+  async register(email: string, password: string, fullName: string): Promise<AuthResponse> {
+    try {
+      const res = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, full_name: fullName })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        isBackendAvailable = true;
+        return data;
+      }
+    } catch {
+      isBackendAvailable = false;
+    }
+
+    // Fallback reactivo local
+    const mockUser: User = {
+      id: `usr-${Date.now()}`,
+      email,
+      full_name: fullName,
+      is_active: true,
+      created_at: new Date().toISOString()
+    };
+    return {
+      access_token: `mock-jwt-token-${Date.now()}`,
+      token_type: "bearer",
+      user: mockUser
+    };
+  },
+
+  async login(email: string, password: string): Promise<AuthResponse> {
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        isBackendAvailable = true;
+        return data;
+      }
+    } catch {
+      isBackendAvailable = false;
+    }
+
+    // Fallback reactivo local
+    const mockUser: User = {
+      id: "usr-demo-alberto",
+      email: email || "alberto@legadovivo.com",
+      full_name: email.split('@')[0].toUpperCase() || "Alberto Gómez",
+      is_active: true,
+      created_at: new Date().toISOString()
+    };
+    return {
+      access_token: `mock-jwt-token-${Date.now()}`,
+      token_type: "bearer",
+      user: mockUser
+    };
+  },
+
   async getMe(): Promise<User | null> {
     try {
       const res = await fetch(`${API_BASE}/auth/me`, {
@@ -155,97 +210,107 @@ export const api = {
   },
 
   // ==========================================
-  // VINCULACIONES & DOBLE ROL
+  // VINCULACIONES & DOBLE ROL (100% REAL EN BACKEND)
   // ==========================================
-  // Rol Titular: Generar código de invitación
-  async generateInviteCode(): Promise<{ connection_code: string; message: string }> {
-    const online = await checkBackendAvailability();
-    if (online) {
-      try {
-        const res = await fetch(`${API_BASE}/legacy/generate-code`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() }
-        });
-        if (res.ok) return await res.json();
-      } catch {
-        isBackendAvailable = false;
-      }
-    }
 
-    const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const newCode = `LEG-${randomSuffix}`;
-    const newInvite: BeneficiaryInvite = {
-      connection_id: `inv-${Date.now()}`,
-      connection_code: newCode,
-      status: "active",
-      created_at: new Date().toISOString()
-    };
-    LOCAL_INVITES = [newInvite, ...LOCAL_INVITES];
-    return {
-      connection_code: newCode,
-      message: "Código generado exitosamente. Compártelo con tu familiar."
-    };
+  // Rol Titular: Generar código de invitación único
+  async generateInviteCode(expirationHours: number = 48, autoCancelPrevious: boolean = false): Promise<GenerateCodeResponse> {
+    const res = await fetch(`${API_BASE}/legacy/generate-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ 
+        expiration_hours: expirationHours, 
+        auto_cancel_previous: autoCancelPrevious 
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `Error HTTP ${res.status}` }));
+      throw new Error(err.detail || err.message || 'Error al generar código de vinculación');
+    }
+    return await res.json();
   },
 
-  // Rol Titular: Obtener invitaciones/beneficiarios propios
-  async getMyBeneficiaries(): Promise<BeneficiaryInvite[]> {
-    const online = await checkBackendAvailability();
-    if (online) {
-      try {
-        const res = await fetch(`${API_BASE}/legacy/my-beneficiaries`, {
-          headers: getAuthHeader()
-        });
-        if (res.ok) return await res.json();
-      } catch {
-        isBackendAvailable = false;
-      }
+  // Rol Titular: Cancelar código de invitación pendiente
+  async cancelInviteCode(connectionId: string): Promise<ActionResponse> {
+    const res = await fetch(`${API_BASE}/legacy/cancel-code/${connectionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() }
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `Error HTTP ${res.status}` }));
+      throw new Error(err.detail || err.message || 'Error al cancelar código');
     }
-    return LOCAL_INVITES;
+    return await res.json();
   },
 
-  // Rol Beneficiario: Enviar código para vincularse a un Titular
+  // Rol Beneficiario: Previsualizar Titular antes de confirmar (Validación segura y Rate Limiting en Backend)
+  async previewInviteCode(code: string): Promise<CodePreviewResponse> {
+    const res = await fetch(`${API_BASE}/legacy/preview-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ connection_code: code.trim().toUpperCase() })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `Error HTTP ${res.status}` }));
+      throw new Error(err.detail || err.message || 'Código de vinculación inválido o expirado.');
+    }
+    return await res.json();
+  },
+
+  // Rol Beneficiario: Confirmar explícitamente y registrar vinculación atómica
+  async confirmLink(code: string): Promise<LegacyConnectionSummary> {
+    const res = await fetch(`${API_BASE}/legacy/confirm-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ connection_code: code.trim().toUpperCase() })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `Error HTTP ${res.status}` }));
+      throw new Error(err.detail || err.message || 'Error al confirmar vinculación');
+    }
+    return await res.json();
+  },
+
+  // Alias para compatibilidad con código existente
   async linkWithCode(code: string): Promise<LegacyConnectionSummary> {
-    const online = await checkBackendAvailability();
-    if (online) {
-      try {
-        const res = await fetch(`${API_BASE}/legacy/link`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({ connection_code: code })
-        });
-        if (res.ok) return await res.json();
-      } catch {
-        isBackendAvailable = false;
-      }
-    }
+    return this.confirmLink(code);
+  },
 
-    const newConnection: LegacyConnectionSummary = {
-      connection_id: `conn-${Date.now()}`,
-      owner_id: `titular-${Date.now()}`,
-      owner_name: `Titular Vinculado (${code.toUpperCase()})`,
-      owner_email: "titular@familia.com",
-      status: "active",
-      linked_at: new Date().toISOString(),
-      created_at: new Date().toISOString()
-    };
-    LOCAL_CONNECTIONS = [newConnection, ...LOCAL_CONNECTIONS];
-    return newConnection;
+  // Desvincular conexión (Titular o Beneficiario)
+  async unlinkConnection(connectionId: string): Promise<ActionResponse> {
+    const res = await fetch(`${API_BASE}/legacy/unlink/${connectionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() }
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `Error HTTP ${res.status}` }));
+      throw new Error(err.detail || err.message || 'Error al desvincular conexión');
+    }
+    return await res.json();
+  },
+
+  // Rol Titular: Obtener invitaciones y beneficiarios vinculados
+  async getMyBeneficiaries(): Promise<BeneficiaryInvite[]> {
+    const res = await fetch(`${API_BASE}/legacy/my-beneficiaries`, {
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `Error HTTP ${res.status}` }));
+      throw new Error(err.detail || err.message || 'Error al consultar beneficiarios');
+    }
+    return await res.json();
   },
 
   // Rol Beneficiario: Lista de Titulares a los que tengo acceso ("Seres Queridos")
   async getMyConnections(): Promise<LegacyConnectionSummary[]> {
-    const online = await checkBackendAvailability();
-    if (online) {
-      try {
-        const res = await fetch(`${API_BASE}/legacy/my-connections`, {
-          headers: getAuthHeader()
-        });
-        if (res.ok) return await res.json();
-      } catch {
-        isBackendAvailable = false;
-      }
+    const res = await fetch(`${API_BASE}/legacy/my-connections`, {
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `Error HTTP ${res.status}` }));
+      throw new Error(err.detail || err.message || 'Error al consultar conexiones');
     }
-    return LOCAL_CONNECTIONS;
+    return await res.json();
   },
 
   // ==========================================

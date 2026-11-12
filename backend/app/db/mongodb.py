@@ -42,8 +42,6 @@ async def connect_mongo():
     except Exception as e:
         logger.error(f"Error conectando a MongoDB en localhost:27017: {e}")
         logger.info("Verifica que el servicio de MongoDB en Windows esté iniciado.")
-        db_manager.client = None
-        db_manager.db = None
 
 
 async def close_mongo():

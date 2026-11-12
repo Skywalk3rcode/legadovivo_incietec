@@ -10,7 +10,7 @@ logger = logging.getLogger("init_db")
 
 # Credenciales por defecto de PostgreSQL local en Windows
 PG_USER = os.getenv("POSTGRES_USER", "postgres")
-PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "12345")
+PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "1040572521")
 PG_HOST = os.getenv("POSTGRES_HOST", "localhost")
 PG_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
 PG_DB_NAME = "legadovivo_db"
@@ -48,11 +48,7 @@ def setup_postgresql():
         conn.close()
 
     except Exception as e:
-        try:
-            err_msg = str(e)
-        except Exception:
-            err_msg = repr(e)
-        logger.error(f"Error conectando a PostgreSQL ({err_msg}).")
+        logger.error(f"Error conectando a PostgreSQL ({e}).")
         logger.info("Si la contrasena es diferente, puedes configurarla con $env:POSTGRES_PASSWORD='tu_clave'")
         return False
     return True

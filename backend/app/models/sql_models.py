@@ -15,15 +15,12 @@ from app.db.postgres import Base
 
 
 class ConnectionStatus(str, enum.Enum):
-    ACTIVE = "active"
-    PENDING_POST_MORTEM = "pending_post_mortem"
-    REVOKED = "revoked"
-
-
-class UserRole(str, enum.Enum):
-    TITULAR = "titular"
-    BENEFICIARY = "beneficiary"
-    ADMIN = "admin"
+    PENDING = "PENDING"
+    ACTIVE = "ACTIVE"
+    REVOKED = "REVOKED"
+    EXPIRED = "EXPIRED"
+    CANCELLED = "CANCELLED"
+    PENDING_POST_MORTEM = "PENDING_POST_MORTEM"
 
 
 class ActivationRule(str, enum.Enum):
@@ -37,10 +34,8 @@ class User(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = Column(String(255), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=True)
+    hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
-    role = Column(SQLEnum(UserRole), default=UserRole.TITULAR, nullable=True)
-    titular_id = Column(String(36), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -60,9 +55,10 @@ class User(Base):
         cascade="all, delete-orphan"
     )
 
-    # Plan de activación post-mortem y auditoría
+    # Plan de activación post-mortem, auditoría e intentos de seguridad
     legacy_plan = relationship("LegacyPlan", back_populates="titular", uselist=False)
     audit_logs = relationship("AuditLog", back_populates="user")
+    code_attempts = relationship("CodeAttempt", back_populates="user")
 
 
 class LegacyConnection(Base):
@@ -76,10 +72,12 @@ class LegacyConnection(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     owner_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     beneficiary_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    status = Column(SQLEnum(ConnectionStatus), default=ConnectionStatus.ACTIVE, nullable=False)
+    status = Column(SQLEnum(ConnectionStatus, name="connectionstatus"), default=ConnectionStatus.PENDING, nullable=False, index=True)
     connection_code = Column(String(32), unique=True, index=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
     linked_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
 
     # Relaciones
     owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_connections")
@@ -114,3 +112,20 @@ class AuditLog(Base):
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user = relationship("User", back_populates="audit_logs")
+
+
+class CodeAttempt(Base):
+    """
+    Registro de intentos de validación/canje de códigos para limitar intentos
+    (Rate Limiting) y mitigar ataques de fuerza bruta.
+    """
+    __tablename__ = "code_attempts"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    ip_address = Column(String(45), nullable=True, index=True)
+    attempted_code = Column(String(32), nullable=False)
+    success = Column(Boolean, default=False, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    user = relationship("User", back_populates="code_attempts")

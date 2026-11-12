@@ -35,8 +35,8 @@ export const Navbar: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleLogout = async () => {
-    await logout();
+  const handleLogout = () => {
+    logout();
     navigate('/login');
   };
 

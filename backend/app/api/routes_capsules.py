@@ -37,13 +37,9 @@ async def list_memory_capsules(
     db = get_mongo_db()
     capsules = []
     if db is not None:
-        try:
-            cursor = db.capsules.find({"titular_id": titular_id}).sort("created_at", -1)
-            async for doc in cursor:
-                capsules.append(MemoryCapsuleInDB(**doc))
-        except Exception:
-            # Si MongoDB no está activo temporalmente, retorna lista vacía sin romper la UI
-            pass
+        cursor = db.capsules.find({"titular_id": titular_id}).sort("created_at", -1)
+        async for doc in cursor:
+            capsules.append(MemoryCapsuleInDB(**doc))
     return capsules
 
 

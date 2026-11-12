@@ -3,7 +3,10 @@ import logging
 import uuid
 from typing import List, Dict, Any, Optional
 import httpx
-from sentence_transformers import SentenceTransformer
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    SentenceTransformer = None
 
 from app.core.config import settings
 from app.db.chroma import get_chroma_collection

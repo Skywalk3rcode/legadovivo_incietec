@@ -44,39 +44,25 @@ Write-Host ""
 # ========================================================
 Write-Host "[2/3] Configurando base de datos PostgreSQL 'legadovivo_db'..." -ForegroundColor Cyan
 
-$PsqlCandidates = @(
-    "C:\Users\$env:USERNAME\Documents\PostgreSQL\18\bin\psql.exe",
-    "C:\Users\$env:USERNAME\Documents\PostgreSQL\17\bin\psql.exe",
-    "C:\Program Files\PostgreSQL\18\bin\psql.exe",
-    "C:\Program Files\PostgreSQL\17\bin\psql.exe"
-)
-$PsqlPath = $null
-foreach ($cand in $PsqlCandidates) {
-    if (Test-Path $cand) {
-        $PsqlPath = $cand
-        break
-    }
-}
-if (-not $PsqlPath) {
-    $found = Get-Command psql -ErrorAction SilentlyContinue
-    if ($found) { $PsqlPath = $found.Source }
+$PsqlPath = "C:\Program Files\PostgreSQL\18\bin\psql.exe"
+if (-not (Test-Path $PsqlPath)) {
+    $PsqlPath = "C:\Program Files\PostgreSQL\17\bin\psql.exe"
 }
 
-if ($PsqlPath) {
+if (Test-Path $PsqlPath) {
     Write-Host "psql detectado en: $PsqlPath" -ForegroundColor Gray
     
     # Preguntar contrasena si no existe variable de entorno
     $PgPass = $env:PGPASSWORD
     if (-not $PgPass) {
-        $PgPass = "12345"
+        $PgPass = Read-Host "Ingresa la contrasena del usuario 'postgres' (presiona Enter para usar 'postgres')"
+        if (-not $PgPass) { $PgPass = "postgres" }
         $env:PGPASSWORD = $PgPass
     }
 
     # Intentar crear la base de datos legadovivo_db con psql
-    $Exists = & $PsqlPath -U postgres -h localhost -p 5432 -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'legadovivo_db'"
-    if ($Exists.Trim() -ne "1") {
-        & $PsqlPath -U postgres -h localhost -p 5432 -d postgres -c "CREATE DATABASE legadovivo_db ENCODING 'UTF8';"
-    }
+    $CreateDbSql = "SELECT 'CREATE DATABASE legadovivo_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'legadovivo_db')\gexec"
+    & $PsqlPath -U postgres -h localhost -p 5432 -d postgres -c $CreateDbSql
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Base de datos PostgreSQL 'legadovivo_db' verificada y lista." -ForegroundColor Green
@@ -84,7 +70,7 @@ if ($PsqlPath) {
         Write-Host "Advertencia: Comprueba que la contrasena de postgres sea correcta." -ForegroundColor Yellow
     }
 } else {
-    Write-Host "No se encontro psql.exe en las rutas usuales de PostgreSQL." -ForegroundColor Yellow
+    Write-Host "No se encontro psql.exe en C:\Program Files\PostgreSQL." -ForegroundColor Yellow
 }
 
 Write-Host ""

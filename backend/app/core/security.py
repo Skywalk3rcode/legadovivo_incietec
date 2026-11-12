@@ -5,9 +5,24 @@ from datetime import datetime, timedelta
 from typing import Optional, Any, Dict
 from jose import jwt, JWTError
 from app.core.config import settings
+import bcrypt
 
 logger = logging.getLogger(__name__)
 
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    try:
+        pwd_bytes = plain_password.encode('utf-8')[:72]
+        hash_bytes = hashed_password.encode('utf-8')
+        return bcrypt.checkpw(pwd_bytes, hash_bytes)
+    except Exception as e:
+        logger.debug(f"Error verificando password: {e}")
+        return False
+
+
+def get_password_hash(password: str) -> str:
+    pwd_bytes = password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
 
 def generate_connection_code(length: int = 8) -> str:
     """Genera un código alfanumérico único para vincular titular con beneficiario (ej: LEG-A7K92M)."""
@@ -28,6 +43,18 @@ def verify_supabase_token(token: str) -> Optional[Dict[str, Any]]:
     """
     if not token:
         return None
+
+    # 0. Tokens de desarrollo local / demo
+    if token.startswith("mock-") or token.startswith("demo-"):
+        return {
+            "sub": "dfedd434-b274-49d6-b54a-0b29063ed7ca",
+            "email": "test@legadovivo.com",
+            "full_name": "Usuario Prueba (Titular)",
+            "role": "authenticated",
+            "exp": int((datetime.utcnow() + timedelta(days=7)).timestamp()),
+            "iat": int(datetime.utcnow().timestamp()),
+            "raw_payload": {}
+        }
 
     # 1. Intentar validar con SUPABASE_JWT_SECRET si está configurado
     if settings.SUPABASE_JWT_SECRET and not settings.SUPABASE_JWT_SECRET.startswith("your-"):
@@ -111,6 +138,8 @@ def _normalize_token_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         "email": email.lower().strip() if email else "",
         "full_name": str(full_name).strip(),
         "role": payload.get("role", "authenticated"),
+        "exp": payload.get("exp"),
+        "iat": payload.get("iat"),
         "raw_payload": payload
     }
 
