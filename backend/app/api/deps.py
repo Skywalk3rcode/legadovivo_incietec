@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.db.postgres import get_db
-from app.models.sql_models import User, LegacyPlan
+from app.models.sql_models import User, LegacyPlan, LegacyConnection, ConnectionStatus
 from app.core.security import verify_supabase_token
 
 # Esquema Bearer Token
@@ -91,15 +91,32 @@ def get_current_user(
 
 def get_current_titular_id(
     token: Optional[str] = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
 ) -> str:
-    """
-    Obtiene el ID del titular en contexto:
-    - Si hay un token válido de Supabase, retorna el sub (UUID del usuario).
-    - Si no hay token o es entorno demo/local, retorna el ID demo.
-    """
+    """Obtiene el ID autenticado del titular; nunca comparte datos demo entre sesiones."""
     if token:
         payload = verify_supabase_token(token)
         if payload and "sub" in payload:
             return payload["sub"]
-    return "titular-demo-12345"
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="La sesión no es válida. Inicia sesión de nuevo con Supabase.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def ensure_titular_access(target_titular_id: str, current_user_id: str, db: Session) -> str:
+    """Allow a user to access their own memories or an active linked titular's memories."""
+    if target_titular_id == current_user_id:
+        return target_titular_id
+
+    connection = db.query(LegacyConnection.id).filter(
+        LegacyConnection.owner_id == target_titular_id,
+        LegacyConnection.beneficiary_id == current_user_id,
+        LegacyConnection.status == ConnectionStatus.ACTIVE,
+    ).first()
+    if not connection:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes una vinculación activa con este legado.",
+        )
+    return target_titular_id

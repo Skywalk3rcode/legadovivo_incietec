@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api, ChatResponse } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import {
   Send,
   Sparkles,
@@ -24,7 +25,7 @@ interface MessageItem {
   audioCapsules?: { id: string; title: string }[];
 }
 
-const RecordedMemoryAudio: React.FC<{ capsuleId: string; title: string }> = ({ capsuleId, title }) => {
+const RecordedMemoryAudio: React.FC<{ capsuleId: string; title: string; titularId?: string }> = ({ capsuleId, title, titularId }) => {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [loadingAudio, setLoadingAudio] = useState(false);
   const [error, setError] = useState('');
@@ -35,7 +36,7 @@ const RecordedMemoryAudio: React.FC<{ capsuleId: string; title: string }> = ({ c
     setLoadingAudio(true);
     setError('');
     try {
-      const audioBlob = await api.getCapsuleAudio(capsuleId);
+      const audioBlob = await api.getCapsuleAudio(capsuleId, titularId);
       setAudioUrl(URL.createObjectURL(audioBlob));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cargar la grabación.');
@@ -55,25 +56,31 @@ const RecordedMemoryAudio: React.FC<{ capsuleId: string; title: string }> = ({ c
   </div>;
 };
 
-const STOP_WORDS = new Set(['que', 'como', 'cual', 'cuando', 'donde', 'por', 'para', 'con', 'sin', 'del', 'las', 'los', 'una', 'uno', 'unos', 'unas', 'esto', 'esa', 'ese', 'sus', 'mis', 'tus', 'fue', 'hay', 'sobre', 'recuerdo', 'memoria', 'cuentame', 'dime', 'hablame']);
+const STOP_WORDS = new Set(['que', 'como', 'cual', 'cuando', 'donde', 'por', 'para', 'con', 'sin', 'del', 'las', 'los', 'una', 'uno', 'unos', 'unas', 'esto', 'esa', 'ese', 'sus', 'mis', 'tus', 'fue', 'hay', 'sobre', 'recuerdo', 'memoria', 'cuentame', 'dime', 'hablame', 'papa', 'padre', 'mama', 'madre', 'hermano', 'hermana', 'abuelo', 'abuela', 'hijo', 'hija', 'tio', 'tia', 'familia']);
 
 function searchTerms(value: string): string[] {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .split(/[^a-z0-9]+/).filter(word => word.length > 2 && !STOP_WORDS.has(word));
 }
 
+function normalizePhrase(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
 export const LegacyChat: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
-  const activeTitularName = (location.state as any)?.titularName || "Abuelo Alberto";
-  const activeTitularId = (location.state as any)?.titularId;
+  const chatTarget = location.state as { titularName?: string; titularId?: string } | null;
+  const activeTitularName = chatTarget?.titularName || user?.full_name || 'Mi legado';
+  const activeTitularId = chatTarget?.titularId || user?.id;
 
   const [messages, setMessages] = useState<MessageItem[]>([
     {
       id: 'init-msg',
       sender: 'assistant',
-      text: `Mijito lindo, qué alegría que estés aquí. Aunque el tiempo pase, siempre estaré contigo a través de mis recuerdos. ¿De qué te gustaría que conversemos hoy?`,
+      text: `Hola, ${activeTitularName}. Este chat usa únicamente los recuerdos guardados en este legado. Si aún no hay recuerdos, puedes capturar uno para comenzar.`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       sources: ['Mensaje de bienvenida afectuosa']
     }
@@ -82,6 +89,7 @@ export const LegacyChat: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
+  const [chatError, setChatError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -170,24 +178,28 @@ export const LegacyChat: React.FC = () => {
     };
 
     setMessages(prev => [...prev, userMsg]);
+    setChatError('');
     if (!textToSend) setInput('');
     setLoading(true);
 
     try {
       const res: ChatResponse = await api.sendChatMessage(query, activeTitularName, activeTitularId);
-      const capsules = res.sources.length ? await api.getCapsules() : [];
+      const capsules = res.sources.length ? await api.getCapsules(activeTitularId) : [];
       const sourceCapsules = res.sources
         .map(source => capsules.find(capsule => capsule._id === source))
         .filter((capsule): capsule is NonNullable<typeof capsule> => Boolean(capsule?.audio_path));
       const queryTerms = new Set(searchTerms(query));
+      const normalizedQuery = normalizePhrase(query);
       const titleMatchedCapsules = sourceCapsules.map(capsule => {
         const titleTerms = searchTerms(capsule.title);
         const contentTerms = new Set(searchTerms(capsule.content));
+        const normalizedTitle = normalizePhrase(capsule.title);
+        const exactTitleMatch = normalizedTitle.length >= 4 && normalizedQuery.includes(normalizedTitle);
         const titleCoverage = titleTerms.filter(term => queryTerms.has(term)).length / Math.max(queryTerms.size, 1);
         const contentCoverage = [...queryTerms].filter(term => contentTerms.has(term)).length / Math.max(queryTerms.size, 1);
-        return { capsule, score: titleCoverage * 2 + contentCoverage * 0.1 };
+        return { capsule, score: exactTitleMatch ? 3 : titleCoverage * 2 + contentCoverage * 0.1 };
       }).filter(match => match.score > 0).sort((a, b) => b.score - a.score);
-      const bestAudioCapsule = titleMatchedCapsules[0]?.capsule || sourceCapsules[0];
+      const bestAudioCapsule = titleMatchedCapsules[0]?.capsule;
       const audioCapsules = bestAudioCapsule
         ? [{ id: bestAudioCapsule._id, title: bestAudioCapsule.title }]
         : [];
@@ -204,16 +216,11 @@ export const LegacyChat: React.FC = () => {
       setMessages(prev => [...prev, botMsg]);
     } catch (err) {
       console.error(err);
+      setChatError(err instanceof Error ? err.message : 'No se pudo consultar este legado.');
     } finally {
       setLoading(false);
     }
   };
-
-  const quickPrompts = [
-    { text: "¿Cómo fue tu viaje a Cusco con el tío Carlos?", type: "hit", label: "Pregunta con recuerdo registrado (RAG Hit)" },
-    { text: "Cuéntame el secreto para preparar el estofado", type: "hit", label: "Pregunta sobre receta familiar (RAG Hit)" },
-    { text: "¿Cuánto dinero ganaste en la lotería en París?", type: "miss", label: "Tema no registrado (Prueba Cero Alucinación)" }
-  ];
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 h-[calc(100vh-5rem)] flex flex-col">
@@ -239,7 +246,7 @@ export const LegacyChat: React.FC = () => {
             <h3 className="font-serif-warm font-bold text-stone-900 text-base flex items-center gap-2">
               {activeTitularName}
               <span className="text-[10px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full font-medium">
-                Voz Sintética Afectuosa
+                Chat del legado
               </span>
             </h3>
             <p className="text-xs text-stone-500">
@@ -252,23 +259,6 @@ export const LegacyChat: React.FC = () => {
           <Sparkles className="w-3.5 h-3.5 text-amber-600" />
           <span>Motor RAG + Ollama</span>
         </div>
-      </div>
-
-      {/* Prompts Rápidos de Prueba */}
-      <div className="mb-4 flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-        <span className="text-stone-400 flex-shrink-0 font-medium">Probar:</span>
-        {quickPrompts.map((q, idx) => (
-          <button
-            key={idx}
-            onClick={() => handleSend(q.text)}
-            className={`px-3 py-1.5 rounded-xl border transition flex-shrink-0 cursor-pointer ${q.type === 'hit'
-                ? 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'
-                : 'bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100'
-              }`}
-          >
-            {q.label}
-          </button>
-        ))}
       </div>
 
       {/* Historial de Mensajes */}
@@ -304,7 +294,7 @@ export const LegacyChat: React.FC = () => {
               </div>
 
               {m.sender === 'assistant' && m.audioCapsules?.map(capsule => (
-                <RecordedMemoryAudio key={capsule.id} capsuleId={capsule.id} title={capsule.title} />
+                <RecordedMemoryAudio key={capsule.id} capsuleId={capsule.id} title={capsule.title} titularId={activeTitularId} />
               ))}
 
               {/* Fuentes y Regla de Negocio */}
@@ -345,6 +335,8 @@ export const LegacyChat: React.FC = () => {
 
         <div ref={messagesEndRef} />
       </div>
+
+      {chatError && <div role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-800">{chatError}</div>}
 
       {/* Input de Envío con Micrófono y Dictado */}
       <form

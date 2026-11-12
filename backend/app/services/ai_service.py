@@ -23,6 +23,7 @@ _CHAT_STOP_WORDS = {
     "que", "como", "cual", "cuando", "donde", "por", "para", "con", "sin", "del", "las", "los",
     "una", "uno", "unos", "unas", "esto", "esa", "ese", "sus", "mis", "tus", "fue", "hay", "sobre",
     "recuerdo", "memoria", "cuentame", "dime", "hablame", "mi", "me", "tu", "te", "el", "la", "de", "y",
+    "papa", "padre", "mama", "madre", "hermano", "hermana", "abuelo", "abuela", "hijo", "hija", "tio", "tia", "familia",
 }
 
 
@@ -37,6 +38,34 @@ def _title_match_score(query: str, title: str) -> float:
         return 0.0
     title_terms = terms(title)
     return len(query_terms & title_terms) / len(query_terms)
+
+
+_DEATH_CLAIM_PHRASES = (
+    "fallecio", "fallecido", "fallecida", "murio", "muerto", "muerta", "en paz descanse",
+    "dios lo tenga en gloria", "dios la tenga en gloria", "ya no esta con nosotros", "en el cielo",
+)
+
+
+def _contains_death_claim(text: str) -> bool:
+    normalized = unicodedata.normalize("NFD", text.lower())
+    normalized = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+    return any(phrase in normalized for phrase in _DEATH_CLAIM_PHRASES)
+
+
+_FAMILY_RELATIONS = {
+    "papa", "padre", "mama", "madre", "hermano", "hermana", "abuelo", "abuela",
+    "hijo", "hija", "tio", "tia", "primo", "prima", "esposo", "esposa",
+}
+
+
+def _has_unsupported_family_relation(response: str, context: str) -> bool:
+    def relations(text: str) -> set[str]:
+        normalized = unicodedata.normalize("NFD", text.lower())
+        normalized = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+        words = set(re.findall(r"[a-z0-9]+", normalized))
+        return {word for word in words if word in _FAMILY_RELATIONS or word.rstrip("s") in _FAMILY_RELATIONS}
+
+    return bool(relations(response) - relations(context))
 
 
 class AIService:
@@ -182,9 +211,28 @@ class AIService:
         # 3. Evaluar relevancia semántica (regla crítica: Cero Alucinación)
         # Nota: en métrica cosine, distancia menor significa mayor similitud.
         matches = []
+        audio_only_sources: Dict[str, str] = {}
+        mongo_db = get_mongo_db()
         for position, (doc, dist, meta) in enumerate(zip(documents, distances, metadatas)):
             if dist <= distance_threshold:
-                title_score = _title_match_score(user_message, meta.get("title") or "")
+                capsule_id = meta.get("capsule_id")
+                capsule = None
+                if mongo_db is not None and capsule_id:
+                    capsule = await mongo_db.capsules.find_one(
+                        {"_id": capsule_id, "titular_id": titular_id},
+                        {"title": 1, "content": 1, "audio_path": 1}
+                    )
+                title = (capsule or {}).get("title") or meta.get("title") or ""
+                title_score = _title_match_score(user_message, title)
+                content = ((capsule or {}).get("content") or "").strip()
+                normalized_content = " ".join(re.findall(r"[a-z0-9]+", unicodedata.normalize("NFD", content.lower()).encode("ascii", "ignore").decode("ascii")))
+                is_audio_only = bool((capsule or {}).get("audio_path")) and (
+                    len(content) < 24 or normalized_content in {"deje un audio", "audio del recuerdo", "grabacion adjunta"}
+                )
+                if is_audio_only and title_score < 0.5:
+                    continue
+                if is_audio_only and capsule_id:
+                    audio_only_sources[capsule_id] = title
                 matches.append((doc, dist, meta, position, title_score))
 
         # If the user names a memory, prioritize its title match over broader semantic matches.
@@ -192,20 +240,23 @@ class AIService:
         relevant_docs = [match[0] for match in matches]
         sources = [match[2].get("capsule_id") or match[2].get("title") for match in matches]
 
-        available_topics = await cls.get_available_topics(titular_id)
-        suggested_topic = available_topics[0] if available_topics else "mis anécdotas de juventud"
-
         # CASO A: Sin coincidencia en la memoria registrada -> Respuesta estricta obligatoria
         if not relevant_docs:
-            fallback_response = (
-                f"No dejé registros sobre este tema específico en mi legado, "
-                f"pero me encantaría que recordáramos {suggested_topic}."
-            )
+            fallback_response = "No encontré un recuerdo registrado que responda a eso. Prueba con el título de una cápsula o guarda ese recuerdo primero."
             return {
                 "response": fallback_response,
                 "sources": [],
                 "confidence": 0.0,
                 "matched_memories": 0
+            }
+
+        if sources and sources[0] in audio_only_sources:
+            title = audio_only_sources[sources[0]]
+            return {
+                "response": f"Encontré una grabación sobre «{title}». No hay texto adicional guardado para resumirla; puedes reproducir el audio original.",
+                "sources": [sources[0]],
+                "confidence": 1.0 - min(distances) if distances else 1.0,
+                "matched_memories": 1,
             }
 
         # CASO B: Hay recuerdos relevantes -> Llamar a Ollama con inyección de estilo
@@ -223,7 +274,9 @@ ESTILO Y TONO DE COMUNICACIÓN (Mimetismo de Personalidad):
 REGLAS DE NEGOCIO CRÍTICAS (CERO ALUCINACIÓN):
 1. Basa tu respuesta ESTRICTAMENTE en los siguientes recuerdos verificados.
 2. TIENES ESTRICTAMENTE PROHIBIDO inventar fechas, nombres, anécdotas o detalles no presentes en el contexto.
-3. Si te preguntan algo que no aparece en estos recuerdos, di amablemente que no dejaste registro sobre eso y sugiere retomar uno de los recuerdos verificados.
+3. No infieras si una persona está viva o falleció. Solo puedes decirlo si el recuerdo lo afirma explícitamente.
+4. No inventes ni supongas hermanos, hijos, relaciones, profesiones, creencias o parentescos que no estén escritos en el contexto.
+5. Si la pregunta pide información ausente, di que no hay un recuerdo registrado sobre ese dato. No rellenes los vacíos con una historia probable.
 
 RECUERDOS VERIFICADOS:
 {context_text}
@@ -233,6 +286,12 @@ RECUERDOS VERIFICADOS:
             system_prompt=system_prompt,
             user_prompt=user_message
         )
+        if llm_response and _has_unsupported_family_relation(llm_response, context_text):
+            llm_response = "Los recuerdos consultados no mencionan ese parentesco. No puedo suponerlo ni inventarlo."
+        elif llm_response and _contains_death_claim(llm_response):
+            # Even if another memory mentions a death, do not let Ollama transfer
+            # that fact to a different relative. Let the user inspect the source.
+            llm_response = "Los recuerdos consultados no permiten confirmar a quién se refiere ese dato. No voy a suponer quién falleció."
         if llm_response is None:
             db = get_mongo_db()
             best_capsule = None

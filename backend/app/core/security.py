@@ -32,8 +32,7 @@ def verify_supabase_token(token: str) -> Optional[Dict[str, Any]]:
     """
     Decodifica y valida un token de sesión emitido por Supabase Auth.
     - Si SUPABASE_JWT_SECRET está configurado, valida criptográficamente la firma HS256.
-    - Si no está disponible el secreto pero el token contiene estructura JWT válida de Supabase,
-      extrae las declaraciones de identidad (sub, email, user_metadata).
+    - Si no valida localmente, consulta la API oficial de Supabase Auth.
     - Admite también tokens de desarrollo emitidos localmente.
     """
     if not token:
@@ -91,20 +90,6 @@ def verify_supabase_token(token: str) -> Optional[Dict[str, Any]]:
             return _normalize_token_payload(payload)
         except JWTError:
             pass
-
-    # 3. Extraer claims no verificados si el token proviene de Supabase Auth
-    try:
-        claims = jwt.get_unverified_claims(token)
-        # Verificar expiración mínima
-        exp = claims.get("exp")
-        if exp and datetime.utcfromtimestamp(exp) < datetime.utcnow():
-            logger.warning("Token de Supabase expirado.")
-            return None
-
-        if "sub" in claims:
-            return _normalize_token_payload(claims)
-    except Exception as e:
-        logger.error(f"Error al procesar token de Supabase: {e}")
 
     return None
 

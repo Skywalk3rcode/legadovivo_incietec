@@ -1,10 +1,12 @@
 import os
 import uuid
 from pathlib import Path
-from typing import List
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
-from app.api.deps import get_current_titular_id
+from sqlalchemy.orm import Session
+from app.api.deps import get_current_titular_id, ensure_titular_access
+from app.db.postgres import get_db
 from app.models.mongo_schemas import MemoryCapsuleCreate, MemoryCapsuleInDB, StyleProfile
 from app.services.ai_service import AIService
 from app.db.mongodb import get_mongo_db
@@ -58,8 +60,14 @@ async def upload_capsule_audio(
 
 
 @router.get("/{capsule_id}/audio")
-async def get_capsule_audio(capsule_id: str, titular_id: str = Depends(get_current_titular_id)):
-    capsule = await _find_capsule(get_mongo_db(), capsule_id, titular_id)
+async def get_capsule_audio(
+    capsule_id: str,
+    titular_id: Optional[str] = Query(default=None),
+    current_user_id: str = Depends(get_current_titular_id),
+    db_session: Session = Depends(get_db),
+):
+    active_titular_id = ensure_titular_access(titular_id or current_user_id, current_user_id, db_session)
+    capsule = await _find_capsule(get_mongo_db(), capsule_id, active_titular_id)
     if not capsule or not capsule.get("audio_path"):
         raise HTTPException(status_code=404, detail="Esta cápsula no tiene audio.")
     path = (_audio_root() / Path(capsule["audio_path"]).name).resolve()
@@ -91,13 +99,16 @@ async def create_memory_capsule(
 
 @router.get("/", response_model=List[MemoryCapsuleInDB])
 async def list_memory_capsules(
-    titular_id: str = Depends(get_current_titular_id)
+    titular_id: Optional[str] = Query(default=None),
+    current_user_id: str = Depends(get_current_titular_id),
+    db_session: Session = Depends(get_db),
 ):
     """Obtiene la biblioteca de cápsulas de memoria del titular desde MongoDB."""
+    active_titular_id = ensure_titular_access(titular_id or current_user_id, current_user_id, db_session)
     db = get_mongo_db()
     capsules = []
     if db is not None:
-        cursor = db.capsules.find({"titular_id": titular_id}).sort("created_at", -1)
+        cursor = db.capsules.find({"titular_id": active_titular_id}).sort("created_at", -1)
         async for doc in cursor:
             capsules.append(MemoryCapsuleInDB(**doc))
     return capsules

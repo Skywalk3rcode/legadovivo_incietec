@@ -43,6 +43,8 @@ export const Dashboard: React.FC = () => {
   const [linkMessage, setLinkMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState('');
+  const [inviteError, setInviteError] = useState('');
 
   // Carga inicial
   useEffect(() => {
@@ -59,6 +61,7 @@ export const Dashboard: React.FC = () => {
         setConnections(conns);
       } catch (err) {
         console.error("Error cargando dashboard:", err);
+        setDashboardError(err instanceof Error ? err.message : 'No se pudo conectar con el servidor.');
       } finally {
         setLoading(false);
       }
@@ -69,14 +72,20 @@ export const Dashboard: React.FC = () => {
   // Generar Código de Invitación (Titular)
   const handleGenerateCode = async () => {
     setGeneratingCode(true);
+    setInviteError('');
     try {
       const res = await api.generateInviteCode();
       setGeneratedCode(res.connection_code);
       // Refrescar lista de invitaciones
-      const updated = await api.getMyBeneficiaries();
-      setMyBeneficiaries(updated);
+      try {
+        const updated = await api.getMyBeneficiaries();
+        setMyBeneficiaries(updated);
+      } catch {
+        setInviteError('El código se creó, pero no se pudo actualizar la lista. Recarga el panel.');
+      }
     } catch (err) {
       console.error(err);
+      setInviteError(err instanceof Error ? err.message : 'No se pudo generar el código.');
     } finally {
       setGeneratingCode(false);
     }
@@ -103,9 +112,7 @@ export const Dashboard: React.FC = () => {
         type: 'success'
       });
       setLinkInputCode('');
-      // Refrescar conexiones
-      const conns = await api.getMyConnections();
-      setConnections(conns);
+      setConnections(current => [res, ...current.filter(connection => connection.connection_id !== res.connection_id)]);
     } catch (err: any) {
       setLinkMessage({
         text: err?.message || 'Código de vinculación inválido o expirado.',
@@ -136,7 +143,7 @@ export const Dashboard: React.FC = () => {
             Panel Contextual Doble Rol
           </span>
           <h2 className="text-2xl sm:text-3xl font-serif-warm font-bold text-stone-900 tracking-tight">
-            Hola, {user?.full_name || 'Alberto'}
+            Hola, {user?.full_name || 'tu cuenta'}
           </h2>
           <p className="text-stone-500 text-sm mt-1">
             Desde aquí puedes gestionar tu propio legado y conectarte con las memorias de tu familia.
@@ -176,6 +183,7 @@ export const Dashboard: React.FC = () => {
           </button>
         </div>
       </div>
+      {dashboardError && <div role="alert" className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{dashboardError}</div>}
 
       {/* ============================================================
           TAB A: MI LEGADO (ROL TITULAR)
@@ -258,6 +266,7 @@ export const Dashboard: React.FC = () => {
                   </button>
                 )}
               </div>
+              {inviteError && <div role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{inviteError}</div>}
             </div>
 
           </div>

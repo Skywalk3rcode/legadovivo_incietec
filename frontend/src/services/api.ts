@@ -91,56 +91,26 @@ function getAuthHeader(): Record<string, string> {
   return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
 
-// ==========================================
-// Memoria Local Reactiva para Simulación MVP
-// ==========================================
-let LOCAL_CONNECTIONS: LegacyConnectionSummary[] = [
-  {
-    connection_id: "conn-1",
-    owner_id: "titular-alberto",
-    owner_name: "Alberto Gómez (Abuelo)",
-    owner_email: "alberto@legadovivo.com",
-    status: "active",
-    linked_at: new Date(Date.now() - 86400000 * 10).toISOString(),
-    created_at: new Date(Date.now() - 86400000 * 12).toISOString()
+async function requestConnectionJson<T>(url: string, options: RequestInit, errorLabel: string): Promise<T> {
+  if (!(await checkBackendAvailability())) {
+    throw new Error('El servidor no está disponible; no se puede crear una vinculación real sin conexión.');
   }
-];
 
-let LOCAL_INVITES: BeneficiaryInvite[] = [
-  {
-    connection_id: "inv-1",
-    beneficiary_id: "ben-carlos",
-    beneficiary_name: "Carlos Gómez (Hijo)",
-    beneficiary_email: "carlos@correo.com",
-    connection_code: "LEG-8X9K2M",
-    status: "active",
-    linked_at: new Date(Date.now() - 86400000 * 3).toISOString(),
-    created_at: new Date(Date.now() - 86400000 * 4).toISOString()
+  let res: Response;
+  try {
+    res = await fetch(url, options);
+  } catch {
+    isBackendAvailable = false;
+    throw new Error('No se pudo conectar con el servidor para completar la vinculación.');
   }
-];
 
-let LOCAL_CAPSULES: CapsuleResponse[] = [
-  {
-    _id: "demo-cap-1",
-    titular_id: "titular-demo-12345",
-    title: "El viaje en tren a Cusco con mi hermano Carlos",
-    content: "Mijito lindo, te cuento que en 1982 viajamos con Carlos a Cusco. Llovía a cántaros cuando bajamos del tren y nos compramos dos ponchos de lana gruesa en el mercado de San Pedro. Reímos tanto tomando mate de coca caliente junto a un fogón.",
-    category: "Anécdotas",
-    tags: ["familia", "viajes", "hermanos", "cusco"],
-    emotional_tone: "cálido y nostálgico",
-    created_at: new Date(Date.now() - 86400000 * 5).toISOString()
-  },
-  {
-    _id: "demo-cap-2",
-    titular_id: "titular-demo-12345",
-    title: "El secreto del estofado de los domingos",
-    content: "Oye, escúchame bien: el gran secreto del estofado nunca fue el vino, sino dejar dorar la cebolla roja con una pizca de azúcar y laurel por al menos veinte minutos a fuego muy bajito. Con todo mi cariño te dejo esta enseñanza para cuando cocines.",
-    category: "Cocina y Familia",
-    tags: ["recetas", "abuela", "tradición", "comida"],
-    emotional_tone: "afectuoso y protector",
-    created_at: new Date(Date.now() - 86400000 * 2).toISOString()
+  isBackendAvailable = true;
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail || `${errorLabel} (HTTP ${res.status}).`);
   }
-];
+  return res.json();
+}
 
 export const api = {
   isOnline(): boolean {
@@ -232,130 +202,60 @@ export const api = {
   // ==========================================
   // Rol Titular: Generar código de invitación
   async generateInviteCode(): Promise<{ connection_code: string; message: string }> {
-    const online = await checkBackendAvailability();
-    if (online) {
-      try {
-        const res = await fetch(`${API_BASE}/legacy/generate-code`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() }
-        });
-        if (res.ok) return await res.json();
-      } catch {
-        isBackendAvailable = false;
-      }
-    }
-
-    const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const newCode = `LEG-${randomSuffix}`;
-    const newInvite: BeneficiaryInvite = {
-      connection_id: `inv-${Date.now()}`,
-      connection_code: newCode,
-      status: "active",
-      created_at: new Date().toISOString()
-    };
-    LOCAL_INVITES = [newInvite, ...LOCAL_INVITES];
-    return {
-      connection_code: newCode,
-      message: "Código generado exitosamente. Compártelo con tu familiar."
-    };
+    return requestConnectionJson(`${API_BASE}/legacy/generate-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() }
+    }, 'No se pudo generar el código');
   },
 
   // Rol Titular: Obtener invitaciones/beneficiarios propios
   async getMyBeneficiaries(): Promise<BeneficiaryInvite[]> {
-    const online = await checkBackendAvailability();
-    if (online) {
-      try {
-        const res = await fetch(`${API_BASE}/legacy/my-beneficiaries`, {
-          headers: getAuthHeader()
-        });
-        if (res.ok) return await res.json();
-      } catch {
-        isBackendAvailable = false;
-      }
-    }
-    return LOCAL_INVITES;
+    return requestConnectionJson(`${API_BASE}/legacy/my-beneficiaries`, {
+      headers: getAuthHeader()
+    }, 'No se pudieron cargar tus invitaciones');
   },
 
   // Rol Beneficiario: Enviar código para vincularse a un Titular
   async linkWithCode(code: string): Promise<LegacyConnectionSummary> {
-    const online = await checkBackendAvailability();
-    if (online) {
-      try {
-        const res = await fetch(`${API_BASE}/legacy/link`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({ connection_code: code })
-        });
-        if (res.ok) return await res.json();
-      } catch {
-        isBackendAvailable = false;
-      }
-    }
-
-    const newConnection: LegacyConnectionSummary = {
-      connection_id: `conn-${Date.now()}`,
-      owner_id: `titular-${Date.now()}`,
-      owner_name: `Titular Vinculado (${code.toUpperCase()})`,
-      owner_email: "titular@familia.com",
-      status: "active",
-      linked_at: new Date().toISOString(),
-      created_at: new Date().toISOString()
-    };
-    LOCAL_CONNECTIONS = [newConnection, ...LOCAL_CONNECTIONS];
-    return newConnection;
+    return requestConnectionJson(`${API_BASE}/legacy/link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ connection_code: code })
+    }, 'No se pudo canjear el código');
   },
 
   // Rol Beneficiario: Lista de Titulares a los que tengo acceso ("Seres Queridos")
   async getMyConnections(): Promise<LegacyConnectionSummary[]> {
-    const online = await checkBackendAvailability();
-    if (online) {
-      try {
-        const res = await fetch(`${API_BASE}/legacy/my-connections`, {
-          headers: getAuthHeader()
-        });
-        if (res.ok) return await res.json();
-      } catch {
-        isBackendAvailable = false;
-      }
-    }
-    return LOCAL_CONNECTIONS;
+    return requestConnectionJson(`${API_BASE}/legacy/my-connections`, {
+      headers: getAuthHeader()
+    }, 'No se pudieron cargar tus vinculaciones');
   },
 
   // ==========================================
   // CÁPSULAS & CHAT RAG
   // ==========================================
-  async getCapsules(): Promise<CapsuleResponse[]> {
-    try {
-      const res = await fetch(`${API_BASE}/capsules/`, {
-        headers: getAuthHeader()
-      });
-      if (res.ok) return await res.json();
-    } catch {
-      // Fallback
+  async getCapsules(titularId?: string): Promise<CapsuleResponse[]> {
+    const url = new URL(`${API_BASE}/capsules/`, window.location.origin);
+    if (titularId) url.searchParams.set('titular_id', titularId);
+    const res = await fetch(url, { headers: getAuthHeader() });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.detail || `No se pudieron cargar las memorias (HTTP ${res.status}).`);
     }
-    return LOCAL_CAPSULES;
+    return res.json();
   },
 
   async createCapsule(capsule: CapsulePayload): Promise<CapsuleResponse> {
-    try {
-      const res = await fetch(`${API_BASE}/capsules/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify(capsule)
-      });
-      if (res.ok) return await res.json();
-    } catch {
-      // Fallback
+    const res = await fetch(`${API_BASE}/capsules/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(capsule)
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.detail || `No se pudo guardar el recuerdo (HTTP ${res.status}).`);
     }
-
-    const newCap: CapsuleResponse = {
-      ...capsule,
-      _id: `cap-${Date.now()}`,
-      titular_id: "titular-demo-12345",
-      created_at: new Date().toISOString()
-    };
-    LOCAL_CAPSULES = [newCap, ...LOCAL_CAPSULES];
-    return newCap;
+    return res.json();
   },
 
   async uploadCapsuleAudio(capsuleId: string, audio: File | Blob, filename: string): Promise<CapsuleResponse> {
@@ -374,8 +274,10 @@ export const api = {
     return res.json();
   },
 
-  async getCapsuleAudio(capsuleId: string): Promise<Blob> {
-    const res = await fetch(`${API_BASE}/capsules/${encodeURIComponent(capsuleId)}/audio`, {
+  async getCapsuleAudio(capsuleId: string, titularId?: string): Promise<Blob> {
+    const url = new URL(`${API_BASE}/capsules/${encodeURIComponent(capsuleId)}/audio`, window.location.origin);
+    if (titularId) url.searchParams.set('titular_id', titularId);
+    const res = await fetch(url, {
       headers: getAuthHeader()
     });
     if (!res.ok) {
@@ -395,52 +297,24 @@ export const api = {
       // Fallback
     }
     return {
-      typical_phrases: ["mijito lindo", "oye", "escúchame bien", "con todo mi cariño", "te cuento"],
-      formality_level: "cálido, cercano y profundamente afectuoso",
-      warmth_score: 0.95,
-      sentiment_tendency: "nostálgico, protector y sereno"
+      typical_phrases: [],
+      formality_level: "Aún no hay datos suficientes",
+      warmth_score: 0.5,
+      sentiment_tendency: "Aún no hay recuerdos suficientes"
     };
   },
 
-  async sendChatMessage(message: string, titularName: string = "Abuelo", titularId?: string): Promise<ChatResponse> {
-    try {
-      const res = await fetch(`${API_BASE}/chat/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ message, titular_name: titularName, titular_id: titularId })
-      });
-      if (res.ok) return await res.json();
-    } catch {
-      // Fallback
-    }
-
-    // Simulación RAG + Cero Alucinación
-    const lower = message.toLowerCase();
-    const matched = LOCAL_CAPSULES.filter(c => {
-      const inTitle = c.title.toLowerCase().split(/\s+/).some(w => w.length > 3 && lower.includes(w));
-      const inContent = c.content.toLowerCase().split(/\s+/).some(w => w.length > 4 && lower.includes(w));
-      const inTags = c.tags.some(t => lower.includes(t.toLowerCase()));
-      return inTitle || inContent || inTags;
+  async sendChatMessage(message: string, titularName: string, titularId?: string): Promise<ChatResponse> {
+    const res = await fetch(`${API_BASE}/chat/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ message, titular_name: titularName, titular_id: titularId })
     });
-
-    if (matched.length > 0) {
-      const best = matched[0];
-      return {
-        response: `Mijito lindo, qué alegría que me preguntes eso. Mira, te cuento: ${best.content.replace(/^.*?te cuento que\s*/i, '')} Guardo este recuerdo con todo mi cariño en el alma.`,
-        sources: [best.title],
-        confidence: 0.94,
-        matched_memories: matched.length
-      };
-    } else {
-      const suggested = LOCAL_CAPSULES.length > 0 
-        ? LOCAL_CAPSULES[0].title 
-        : "mis anécdotas de juventud";
-      return {
-        response: `No dejé registros sobre este tema específico en mi legado, pero me encantaría que recordáramos "${suggested}".`,
-        sources: [],
-        confidence: 0.0,
-        matched_memories: 0
-      };
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.detail || `No se pudo consultar el legado (HTTP ${res.status}).`);
     }
+    isBackendAvailable = true;
+    return res.json();
   }
 };

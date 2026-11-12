@@ -1,7 +1,7 @@
 import logging
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.core.config import settings
 
@@ -67,6 +67,10 @@ def init_sql_db():
     """Crea todas las tablas (users, legacy_connections, legacy_plans, audit_logs) en PostgreSQL."""
     try:
         Base.metadata.create_all(bind=engine)
+        # create_all no cambia tablas existentes; permitir usuarios Supabase sin hash local.
+        if engine.dialect.name == "postgresql":
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL"))
         logger.info(f"Tablas de PostgreSQL creadas/verificadas con éxito en '{settings.POSTGRES_DB}'.")
     except Exception as e:
         logger.error(f"Error inicializando tablas en PostgreSQL: {e}")
