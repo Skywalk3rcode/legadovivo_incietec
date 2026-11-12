@@ -3,6 +3,7 @@ import logging
 import re
 import unicodedata
 import uuid
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 import httpx
 from sentence_transformers import SentenceTransformer
@@ -141,6 +142,10 @@ class AIService:
         extrae patrones y actualiza su StyleProfile.
         """
         db = get_mongo_db()
+        if db is not None:
+            current = await db.style_profiles.find_one({"titular_id": titular_id})
+            if current and current.get("is_customized"):
+                return StyleProfile(**current)
         texts: List[str] = []
 
         if db is not None:
@@ -158,6 +163,21 @@ class AIService:
             )
 
         return style_profile
+
+    @classmethod
+    async def save_user_style_profile(cls, profile: StyleProfile) -> StyleProfile:
+        """Persists the titular's chosen voice preferences and marks them as manual."""
+        db = get_mongo_db()
+        if db is None:
+            raise RuntimeError("La base de datos no está disponible.")
+        profile.is_customized = True
+        profile.last_updated = datetime.utcnow()
+        await db.style_profiles.update_one(
+            {"titular_id": profile.titular_id},
+            {"$set": profile.model_dump()},
+            upsert=True,
+        )
+        return profile
 
     @classmethod
     async def get_user_style_profile(cls, titular_id: str) -> StyleProfile:

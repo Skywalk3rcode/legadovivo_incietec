@@ -56,6 +56,38 @@ const RecordedMemoryAudio: React.FC<{ capsuleId: string; title: string; titularI
   </div>;
 };
 
+const PersonalizedVoice: React.FC<{ text: string; titularId?: string }> = ({ text, titularId }) => {
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
+
+  const generate = async () => {
+    setGenerating(true);
+    setError('');
+    try {
+      const audio = await api.synthesizeSpeech(text, titularId);
+      setAudioUrl(URL.createObjectURL(audio));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo generar la voz.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/60 p-2.5">
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-xs font-medium text-amber-950">Voz sintética del legado</span>
+      <button type="button" onClick={() => audioUrl ? setAudioUrl(null) : void generate()} disabled={generating} className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-amber-900 disabled:opacity-60">
+        {generating ? 'Generando voz…' : audioUrl ? 'Quitar audio' : 'Generar audio'}
+      </button>
+    </div>
+    {audioUrl && <audio controls preload="none" src={audioUrl} className="mt-2 h-9 w-full" aria-label="Reproducir respuesta con la voz del legado" />}
+    {error && <p role="alert" className="mt-2 text-xs text-rose-700">{error}</p>}
+  </div>;
+};
+
 const STOP_WORDS = new Set(['que', 'como', 'cual', 'cuando', 'donde', 'por', 'para', 'con', 'sin', 'del', 'las', 'los', 'una', 'uno', 'unos', 'unas', 'esto', 'esa', 'ese', 'sus', 'mis', 'tus', 'fue', 'hay', 'sobre', 'recuerdo', 'memoria', 'cuentame', 'dime', 'hablame', 'papa', 'padre', 'mama', 'madre', 'hermano', 'hermana', 'abuelo', 'abuela', 'hijo', 'hija', 'tio', 'tia', 'familia']);
 
 function searchTerms(value: string): string[] {
@@ -282,7 +314,7 @@ export const LegacyChat: React.FC = () => {
                   <button
                     onClick={() => handleSpeak(m.id, m.text)}
                     className="p-1.5 rounded-lg text-stone-400 hover:text-amber-800 hover:bg-amber-50 transition cursor-pointer flex-shrink-0"
-                    title={speakingId === m.id ? "Detener voz" : "Escuchar con voz sintética"}
+                    title={speakingId === m.id ? "Detener voz del dispositivo" : "Escuchar con voz del dispositivo"}
                   >
                     {speakingId === m.id ? (
                       <VolumeX className="w-4 h-4 text-amber-700 animate-pulse" />
@@ -292,6 +324,10 @@ export const LegacyChat: React.FC = () => {
                   </button>
                 )}
               </div>
+
+              {m.sender === 'assistant' && m.id !== 'init-msg' && (
+                <PersonalizedVoice text={m.text} titularId={activeTitularId} />
+              )}
 
               {m.sender === 'assistant' && m.audioCapsules?.map(capsule => (
                 <RecordedMemoryAudio key={capsule.id} capsuleId={capsule.id} title={capsule.title} titularId={activeTitularId} />

@@ -1,0 +1,6 @@
+fastapi>=0.110.0,<1.0.0
+uvicorn[standard]>=0.29.0,<1.0.0
+python-multipart>=0.0.9
+imageio-ffmpeg>=0.6.0,<1.0.0
+chatterbox-tts==0.1.7
+setuptools<81

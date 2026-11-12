@@ -77,4 +77,5 @@ Abre en tu navegador:
      > *"No dejé registros sobre este tema específico en mi legado, pero me encantaría que recordáramos [tema cercano]."*
 3. **Mimetismo de Voz y Personalidad**:
    - Extrae muletillas (`"mijito"`, `"oye"`, `"te cuento"`) y calidez para inyectarlos en el prompt de Ollama.
-   - Incluye síntesis de voz pausada (Web Speech API) y micrófono para dictar preguntas.
+   - Permite al titular autorizar una grabación propia como referencia para leer respuestas con voz sintética personalizada. También conserva la voz del dispositivo como alternativa.
+   - Para instalar y arrancar el motor local de voz, sigue [`voice-engine/README.md`](voice-engine/README.md). El motor se mantiene separado del entorno principal.

@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { api } from '../services/api';
+import type { StyleProfile } from '../services/api';
 
 export interface AuthUser {
   id: string;
@@ -19,7 +21,7 @@ interface AuthContextType {
   loading: boolean;
   isConfigured: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, fullName: string) => Promise<{ needsEmailVerification?: boolean }>;
+  register: (email: string, password: string, fullName: string, styleProfile: StyleProfile) => Promise<{ needsEmailVerification?: boolean }>;
   logout: () => Promise<void>;
 }
 
@@ -69,6 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setToken(initialSession.access_token);
           setUser(mapSupabaseUser(initialSession.user));
           localStorage.setItem('legadovivo_token', initialSession.access_token);
+          void api.getStyleProfile();
         }
       } catch (err) {
         console.error('Excepción al inicializar sesión:', err);
@@ -134,13 +137,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(data.session.access_token);
       setUser(mapSupabaseUser(data.user));
       localStorage.setItem('legadovivo_token', data.session.access_token);
+      await api.getStyleProfile();
     }
   };
 
   const register = async (
     email: string,
     password: string,
-    fullName: string
+    fullName: string,
+    styleProfile: StyleProfile
   ): Promise<{ needsEmailVerification?: boolean }> => {
     if (!isConfigured) {
       throw new Error(
@@ -154,6 +159,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       options: {
         data: {
           full_name: fullName.trim(),
+          style_profile: {
+            typical_phrases: styleProfile.typical_phrases,
+            formality_level: styleProfile.formality_level,
+            warmth_score: styleProfile.warmth_score,
+            sentiment_tendency: styleProfile.sentiment_tendency,
+          },
         },
       },
     });
@@ -176,6 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(data.session.access_token);
       setUser(mapSupabaseUser(data.user));
       localStorage.setItem('legadovivo_token', data.session.access_token);
+      await api.getStyleProfile();
     }
 
     return { needsEmailVerification };

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api, CapsuleResponse, StyleProfile } from '../services/api';
-import { BookHeart, Sparkles, Calendar, Tag, ShieldCheck, Heart, Headphones } from 'lucide-react';
+import { BookHeart, Sparkles, Calendar, Tag, ShieldCheck, Heart, Headphones, Pencil, Check, X } from 'lucide-react';
 
 const CapsuleAudio: React.FC<{ capsuleId: string; title: string }> = ({ capsuleId, title }) => {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -37,6 +37,10 @@ export const CapsuleLibrary: React.FC = () => {
   const [profile, setProfile] = useState<StyleProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState<string>('todas');
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft] = useState<StyleProfile | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
 
   useEffect(() => {
     async function loadData() {
@@ -61,6 +65,32 @@ export const CapsuleLibrary: React.FC = () => {
   const filtered = filterCategory === 'todas'
     ? capsules
     : capsules.filter(c => c.category === filterCategory);
+
+  const startEditingProfile = () => {
+    if (!profile) return;
+    setProfileDraft({ ...profile, typical_phrases: [...profile.typical_phrases], voice_sample_capsule_id: profile.voice_sample_capsule_id || '', voice_cloning_consent: profile.voice_cloning_consent || false });
+    setProfileError('');
+    setEditingProfile(true);
+  };
+
+  const saveProfile = async () => {
+    if (!profileDraft) return;
+    setSavingProfile(true);
+    setProfileError('');
+    try {
+      const saved = await api.updateStyleProfile({
+        ...profileDraft,
+        typical_phrases: profileDraft.typical_phrases.map(phrase => phrase.trim()).filter(Boolean).slice(0, 8),
+      });
+      setProfile(saved);
+      setProfileDraft(null);
+      setEditingProfile(false);
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'No se pudo guardar el perfil.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -100,44 +130,43 @@ export const CapsuleLibrary: React.FC = () => {
       {/* Tarjeta del Perfil de Estilo Extraído */}
       {profile && (
         <div className="mb-8 p-6 rounded-3xl bg-gradient-to-r from-amber-900 via-amber-800 to-stone-900 text-amber-50 shadow-md">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-5 h-5 text-amber-300" />
-            <h3 className="font-serif-warm font-bold text-lg text-white">
-              Perfil Lingüístico Consolidado (Learning Loop)
-            </h3>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-amber-300" />
+              <h3 className="font-serif-warm font-bold text-lg text-white">Mi forma de hablar</h3>
+            </div>
+            {!editingProfile ? (
+              <button type="button" onClick={startEditingProfile} className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-medium text-white hover:bg-white/20">
+                <Pencil className="h-3.5 w-3.5" />Editar perfil
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => { setEditingProfile(false); setProfileDraft(null); setProfileError(''); }} className="inline-flex items-center gap-1 rounded-xl border border-white/20 px-3 py-2 text-xs text-white hover:bg-white/10"><X className="h-3.5 w-3.5" />Cancelar</button>
+                <button type="button" onClick={saveProfile} disabled={savingProfile || !profileDraft} className="inline-flex items-center gap-1 rounded-xl bg-amber-200 px-3 py-2 text-xs font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-60"><Check className="h-3.5 w-3.5" />{savingProfile ? 'Guardando…' : 'Guardar'}</button>
+              </div>
+            )}
           </div>
           <p className="text-xs text-amber-200/80 mb-4 max-w-2xl">
-            Este perfil se inyecta dinámicamente en el System Prompt de Ollama cada vez que un ser querido abre el chat.
+            El chat usa estas preferencias para acercarse a tu manera de expresarte. Puedes cambiarlas cuando quieras.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-            <div className="bg-white/10 rounded-2xl p-3.5 backdrop-blur-sm border border-white/10">
-              <span className="text-amber-200/70 block uppercase font-bold text-[10px] mb-1">
-                Formalidad y Calidez
-              </span>
-              <p className="font-medium text-white">{profile.formality_level}</p>
+          <p className="mb-4 text-xs text-amber-100/90">Voz propia: {profile.voice_cloning_consent && profile.voice_sample_capsule_id ? 'configurada' : 'pendiente de configurar'}. La primera generación puede tardar mientras se descarga el modelo de voz.</p>
+          {editingProfile && profileDraft ? (
+            <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
+              <label className="space-y-1.5"><span className="block font-medium text-amber-100">Estilo al hablar</span><select value={profileDraft.formality_level} onChange={event => setProfileDraft({ ...profileDraft, formality_level: event.target.value })} className="w-full rounded-xl border border-white/20 bg-stone-900/30 px-3 py-2.5 text-white"><option className="text-stone-900" value="formal, respetuoso y claro">Formal y respetuoso</option><option className="text-stone-900" value="cercano, conversacional y amable">Cercano y conversacional</option><option className="text-stone-900" value="coloquial, espontáneo y familiar">Coloquial y familiar</option><option className="text-stone-900" value="sereno, solemne y reflexivo">Sereno y solemne</option><option className="text-stone-900" value={profileDraft.formality_level}>{profileDraft.formality_level}</option></select></label>
+              <label className="space-y-1.5"><span className="block font-medium text-amber-100">Tono emocional</span><select value={profileDraft.sentiment_tendency} onChange={event => setProfileDraft({ ...profileDraft, sentiment_tendency: event.target.value })} className="w-full rounded-xl border border-white/20 bg-stone-900/30 px-3 py-2.5 text-white"><option className="text-stone-900" value="sereno y reflexivo">Sereno y reflexivo</option><option className="text-stone-900" value="alegre y optimista">Alegre y optimista</option><option className="text-stone-900" value="nostálgico y cariñoso">Nostálgico y cariñoso</option><option className="text-stone-900" value="directo y práctico">Directo y práctico</option><option className="text-stone-900" value="protector y afectuoso">Protector y afectuoso</option><option className="text-stone-900" value={profileDraft.sentiment_tendency}>{profileDraft.sentiment_tendency}</option></select></label>
+              <label className="space-y-1.5"><span className="flex justify-between font-medium text-amber-100"><span>Calidez</span><span>{Math.round(profileDraft.warmth_score * 100)}%</span></span><input type="range" min="0" max="1" step="0.05" value={profileDraft.warmth_score} onChange={event => setProfileDraft({ ...profileDraft, warmth_score: Number(event.target.value) })} className="w-full accent-amber-200" /></label>
+              <label className="space-y-1.5"><span className="block font-medium text-amber-100">Expresiones propias (separadas por coma)</span><input type="text" maxLength={240} value={profileDraft.typical_phrases.join(', ')} onChange={event => setProfileDraft({ ...profileDraft, typical_phrases: event.target.value.split(',').map(phrase => phrase.trim()).slice(0, 8) })} placeholder="mira, te cuento" className="w-full rounded-xl border border-white/20 bg-stone-900/30 px-3 py-2.5 text-white placeholder:text-white/50" /></label>
+              <label className="space-y-1.5 sm:col-span-2"><span className="block font-medium text-amber-100">Grabación para crear tu voz</span><select value={profileDraft.voice_sample_capsule_id || ''} onChange={event => setProfileDraft({ ...profileDraft, voice_sample_capsule_id: event.target.value || null, voice_cloning_consent: event.target.value ? profileDraft.voice_cloning_consent : false })} className="w-full rounded-xl border border-white/20 bg-stone-900/30 px-3 py-2.5 text-white"><option className="text-stone-900" value="">No usar voz clonada</option>{capsules.filter(capsule => capsule.audio_path).map(capsule => <option className="text-stone-900" key={capsule._id} value={capsule._id}>{capsule.title}</option>)}</select><span className="block text-[11px] text-amber-100/70">Elige una grabación clara de tu propia voz, idealmente de 10 segundos o más.</span></label>
+              <label className="flex items-start gap-2 text-amber-50 sm:col-span-2"><input type="checkbox" checked={profileDraft.voice_cloning_consent || false} disabled={!profileDraft.voice_sample_capsule_id} onChange={event => setProfileDraft({ ...profileDraft, voice_cloning_consent: event.target.checked })} className="mt-0.5 accent-amber-200" /><span>Autorizo usar esta grabación para generar respuestas con una voz sintética parecida a la mía. Solo se usará en mi legado y por las personas vinculadas con permiso.</span></label>
+              {profileError && <p role="alert" className="text-rose-200 sm:col-span-2">{profileError}</p>}
             </div>
-            <div className="bg-white/10 rounded-2xl p-3.5 backdrop-blur-sm border border-white/10">
-              <span className="text-amber-200/70 block uppercase font-bold text-[10px] mb-1">
-                Muletillas & Afectos Frecuentes
-              </span>
-              <div className="flex flex-wrap gap-1 mt-1">
-                {profile.typical_phrases.map((phrase, i) => (
-                  <span key={i} className="bg-amber-400/20 text-amber-200 px-2 py-0.5 rounded-md font-medium text-[11px]">
-                    "{phrase}"
-                  </span>
-                ))}
-              </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3.5 backdrop-blur-sm"><span className="mb-1 block text-[10px] font-bold uppercase text-amber-200/70">Estilo y calidez</span><p className="font-medium text-white">{profile.formality_level} · {Math.round(profile.warmth_score * 100)}%</p></div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3.5 backdrop-blur-sm"><span className="mb-1 block text-[10px] font-bold uppercase text-amber-200/70">Expresiones propias</span><div className="mt-1 flex flex-wrap gap-1">{profile.typical_phrases.length ? profile.typical_phrases.map((phrase, index) => <span key={`${phrase}-${index}`} className="rounded-md bg-amber-400/20 px-2 py-0.5 text-[11px] font-medium text-amber-200">“{phrase}”</span>) : <span className="text-white/80">Aún no has añadido expresiones.</span>}</div></div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3.5 backdrop-blur-sm"><span className="mb-1 block text-[10px] font-bold uppercase text-amber-200/70">Tono predominante</span><div className="mt-1 flex items-center gap-1.5"><Heart className="h-4 w-4 text-rose-400" /><span className="font-medium text-white">{profile.sentiment_tendency}</span></div></div>
             </div>
-            <div className="bg-white/10 rounded-2xl p-3.5 backdrop-blur-sm border border-white/10">
-              <span className="text-amber-200/70 block uppercase font-bold text-[10px] mb-1">
-                Tono Predominante
-              </span>
-              <div className="flex items-center gap-1.5 mt-1">
-                <Heart className="w-4 h-4 text-rose-400" />
-                <span className="font-medium text-white">{profile.sentiment_tendency}</span>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       )}
 

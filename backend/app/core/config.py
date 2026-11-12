@@ -40,6 +40,7 @@ if USE_PYDANTIC_SETTINGS:
         # Ollama LLM Local
         OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3:8b")
+        VOICE_TTS_URL: str = os.getenv("VOICE_TTS_URL", "http://127.0.0.1:5003")
         EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
 
         # Supabase Auth
@@ -108,6 +109,7 @@ else:
         # Ollama LLM Local
         OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3:8b")
+        VOICE_TTS_URL: str = os.getenv("VOICE_TTS_URL", "http://127.0.0.1:5003")
         EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
 
         # Supabase Auth

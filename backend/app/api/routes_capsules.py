@@ -5,9 +5,10 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from app.api.deps import get_current_titular_id, ensure_titular_access
+from app.api.deps import get_current_titular_id, ensure_titular_access, oauth2_scheme
+from app.core.security import verify_supabase_token
 from app.db.postgres import get_db
-from app.models.mongo_schemas import MemoryCapsuleCreate, MemoryCapsuleInDB, StyleProfile
+from app.models.mongo_schemas import MemoryCapsuleCreate, MemoryCapsuleInDB, StyleProfile, StyleProfileUpdate
 from app.services.ai_service import AIService
 from app.db.mongodb import get_mongo_db
 
@@ -116,9 +117,49 @@ async def list_memory_capsules(
 
 @router.get("/style-profile", response_model=StyleProfile)
 async def get_style_profile(
-    titular_id: str = Depends(get_current_titular_id)
+    titular_id: str = Depends(get_current_titular_id),
+    token: str = Depends(oauth2_scheme),
 ):
-    """Obtiene el perfil lingüístico sintetizado (muletillas, tono, calidez) del titular."""
+    """Obtiene preferencias guardadas o inicializa las elegidas durante el registro."""
+    db = get_mongo_db()
+    if db is not None:
+        stored = await db.style_profiles.find_one({"titular_id": titular_id})
+        if stored:
+            return StyleProfile(**stored)
+
+    payload = verify_supabase_token(token or "") or {}
+    raw_user = payload.get("raw_payload") or {}
+    metadata = raw_user.get("user_metadata") or {}
+    chosen_profile = metadata.get("style_profile")
+    if chosen_profile:
+        profile = StyleProfile(titular_id=titular_id, **chosen_profile, is_customized=True)
+        return await AIService.save_user_style_profile(profile)
+
     profile = await AIService.get_user_style_profile(titular_id)
     return profile
+
+
+@router.put("/style-profile", response_model=StyleProfile)
+async def update_style_profile(
+    update: StyleProfileUpdate,
+    titular_id: str = Depends(get_current_titular_id),
+):
+    """Guarda el perfil lingüístico editable del titular autenticado."""
+    if update.voice_cloning_consent and not update.voice_sample_capsule_id:
+        raise HTTPException(status_code=422, detail="Selecciona una grabación antes de autorizar la voz sintética.")
+    if update.voice_sample_capsule_id:
+        db = get_mongo_db()
+        if db is None:
+            raise HTTPException(status_code=503, detail="La base de datos no está disponible.")
+        sample = await db.capsules.find_one(
+            {"_id": update.voice_sample_capsule_id, "titular_id": titular_id, "audio_path": {"$exists": True, "$ne": None}},
+            {"_id": 1},
+        )
+        if not sample:
+            raise HTTPException(status_code=422, detail="La grabación elegida no pertenece a este legado o ya no tiene audio.")
+    profile = StyleProfile(titular_id=titular_id, **update.model_dump(), is_customized=True)
+    try:
+        return await AIService.save_user_style_profile(profile)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 

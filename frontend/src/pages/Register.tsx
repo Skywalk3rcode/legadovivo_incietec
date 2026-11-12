@@ -1,21 +1,32 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { BookHeart, Lock, Mail, User as UserIcon, ArrowRight, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
+import type { StyleProfile } from '../services/api';
+import { BookHeart, Lock, Mail, User as UserIcon, ArrowRight, ArrowLeft, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export const Register: React.FC = () => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [formality, setFormality] = useState('cercano, conversacional y amable');
+  const [phrases, setPhrases] = useState('');
+  const [warmth, setWarmth] = useState(0.8);
+  const [sentiment, setSentiment] = useState('sereno y reflexivo');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
+  const [step, setStep] = useState<1 | 2>(1);
 
   const { register, isConfigured } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (step === 1) {
+      setError('');
+      setStep(2);
+      return;
+    }
     if (password.length < 6) {
       setError('La contraseña debe tener al menos 6 caracteres.');
       return;
@@ -25,7 +36,13 @@ export const Register: React.FC = () => {
     setLoading(true);
 
     try {
-      const result = await register(email, password, fullName);
+      const styleProfile: StyleProfile = {
+        typical_phrases: phrases.split(',').map(phrase => phrase.trim()).filter(Boolean).slice(0, 8),
+        formality_level: formality,
+        warmth_score: warmth,
+        sentiment_tendency: sentiment,
+      };
+      const result = await register(email, password, fullName, styleProfile);
       if (result.needsEmailVerification) {
         setConfirmationSent(true);
       } else {
@@ -80,8 +97,13 @@ export const Register: React.FC = () => {
             Crea tu Cuenta de Legado
           </h2>
           <p className="text-stone-500 text-xs sm:text-sm mt-1">
-            Una sola cuenta para crear tus memorias o vincularte a los legados de tu familia.
+            {step === 1 ? 'Primero crea tu cuenta. Después podrás elegir cómo quieres que hable tu legado.' : 'Paso 2: configura la forma de hablar de tu legado.'}
           </p>
+        </div>
+
+        <div className="mb-6 grid grid-cols-2 gap-2" aria-label="Pasos de creación de cuenta">
+          <div className={`rounded-xl px-3 py-2 text-center text-xs font-semibold ${step === 1 ? 'bg-amber-800 text-white' : 'bg-stone-100 text-stone-500'}`}>1. Datos de cuenta</div>
+          <div className={`rounded-xl px-3 py-2 text-center text-xs font-semibold ${step === 2 ? 'bg-amber-800 text-white' : 'bg-stone-100 text-stone-500'}`}>2. Forma de hablar</div>
         </div>
 
         {/* Alerta si falta configurar Supabase */}
@@ -104,6 +126,7 @@ export const Register: React.FC = () => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {step === 1 && <>
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-2">
               Nombre Completo
@@ -155,6 +178,39 @@ export const Register: React.FC = () => {
               />
             </div>
           </div>
+          </>}
+
+          {step === 2 && <fieldset className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+            <legend className="px-1 text-xs font-bold uppercase tracking-wider text-stone-700">¿Cómo quieres que hable tu legado?</legend>
+            <div>
+              <label htmlFor="profile-formality" className="mb-1.5 block text-xs font-medium text-stone-700">Estilo al hablar</label>
+              <select id="profile-formality" value={formality} onChange={event => setFormality(event.target.value)} className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20">
+                <option value="formal, respetuoso y claro">Formal y respetuoso</option>
+                <option value="cercano, conversacional y amable">Cercano y conversacional</option>
+                <option value="coloquial, espontáneo y familiar">Coloquial y familiar</option>
+                <option value="sereno, solemne y reflexivo">Sereno y solemne</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="profile-sentiment" className="mb-1.5 block text-xs font-medium text-stone-700">Tono emocional</label>
+              <select id="profile-sentiment" value={sentiment} onChange={event => setSentiment(event.target.value)} className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20">
+                <option value="sereno y reflexivo">Sereno y reflexivo</option>
+                <option value="alegre y optimista">Alegre y optimista</option>
+                <option value="nostálgico y cariñoso">Nostálgico y cariñoso</option>
+                <option value="directo y práctico">Directo y práctico</option>
+                <option value="protector y afectuoso">Protector y afectuoso</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="profile-warmth" className="mb-1.5 flex justify-between text-xs font-medium text-stone-700"><span>Calidez</span><span>{Math.round(warmth * 100)}%</span></label>
+              <input id="profile-warmth" type="range" min="0" max="1" step="0.05" value={warmth} onChange={event => setWarmth(Number(event.target.value))} className="w-full accent-amber-800" />
+            </div>
+            <div>
+              <label htmlFor="profile-phrases" className="mb-1.5 block text-xs font-medium text-stone-700">Expresiones propias <span className="font-normal text-stone-500">(opcional, separadas por coma)</span></label>
+              <input id="profile-phrases" type="text" value={phrases} onChange={event => setPhrases(event.target.value)} maxLength={240} placeholder="por ejemplo: mira, te cuento" className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20" />
+            </div>
+            <p className="text-[11px] leading-relaxed text-stone-500">Podrás cambiar estas preferencias más adelante desde tu biblioteca.</p>
+          </fieldset>}
 
           <div className="pt-2">
             <div className="flex items-center gap-2 text-xs text-stone-500 mb-4 bg-stone-50 p-2.5 rounded-xl border border-stone-100">
@@ -162,20 +218,23 @@ export const Register: React.FC = () => {
               <span>Autenticación y cifrado seguro gestionado por Supabase Auth.</span>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading || !fullName || !email || !password || !isConfigured}
-              className="w-full py-3.5 px-6 rounded-2xl bg-amber-800 hover:bg-amber-900 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-md shadow-amber-900/20 disabled:opacity-50 transition cursor-pointer"
-            >
+            <div className="flex gap-3">
+              {step === 2 && <button type="button" onClick={() => { setError(''); setStep(1); }} disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-stone-200 px-4 py-3.5 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"><ArrowLeft className="h-4 w-4" />Atrás</button>}
+              <button
+                type="submit"
+                disabled={loading || !isConfigured || (step === 1 && (!fullName.trim() || !email.trim() || !password))}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-800 px-6 py-3.5 text-sm font-medium text-white shadow-md shadow-amber-900/20 transition hover:bg-amber-900 disabled:opacity-50 cursor-pointer"
+              >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  <span>Registrarme</span>
+                  <span>{step === 1 ? 'Continuar' : 'Crear cuenta'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
-            </button>
+              </button>
+            </div>
           </div>
         </form>
 

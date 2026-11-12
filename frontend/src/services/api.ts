@@ -62,6 +62,9 @@ export interface StyleProfile {
   formality_level: string;
   warmth_score: number;
   sentiment_tendency: string;
+  is_customized?: boolean;
+  voice_sample_capsule_id?: string | null;
+  voice_cloning_consent?: boolean;
 }
 
 const API_BASE = '/api';
@@ -304,6 +307,19 @@ export const api = {
     };
   },
 
+  async updateStyleProfile(profile: StyleProfile): Promise<StyleProfile> {
+    const res = await fetch(`${API_BASE}/capsules/style-profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify(profile),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.detail || `No se pudo guardar el perfil (HTTP ${res.status}).`);
+    }
+    return res.json();
+  },
+
   async sendChatMessage(message: string, titularName: string, titularId?: string): Promise<ChatResponse> {
     const res = await fetch(`${API_BASE}/chat/`, {
       method: 'POST',
@@ -316,5 +332,18 @@ export const api = {
     }
     isBackendAvailable = true;
     return res.json();
+  },
+
+  async synthesizeSpeech(text: string, titularId?: string): Promise<Blob> {
+    const res = await fetch(`${API_BASE}/chat/speech`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ text, titular_id: titularId }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.detail || `No se pudo generar la voz (HTTP ${res.status}).`);
+    }
+    return res.blob();
   }
 };

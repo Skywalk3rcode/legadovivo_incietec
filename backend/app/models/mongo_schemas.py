@@ -61,6 +61,19 @@ class StyleProfile(BaseModel):
     )
     warmth_score: float = Field(default=0.9, ge=0.0, le=1.0)
     sentiment_tendency: str = Field(default="positivo y reflexivo")
+    is_customized: bool = False
+    voice_sample_capsule_id: Optional[str] = None
+    voice_cloning_consent: bool = False
     sample_excerpts: List[str] = Field(default_factory=list)
     last_updated: datetime = Field(default_factory=datetime.utcnow)
+
+
+class StyleProfileUpdate(BaseModel):
+    """User-editable voice settings, excluding fields assigned by the server."""
+    typical_phrases: List[str] = Field(default_factory=list, max_length=8)
+    formality_level: str = Field(min_length=1, max_length=120)
+    warmth_score: float = Field(default=0.8, ge=0.0, le=1.0)
+    sentiment_tendency: str = Field(min_length=1, max_length=120)
+    voice_sample_capsule_id: Optional[str] = None
+    voice_cloning_consent: bool = False
 
