@@ -1,13 +1,43 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { BookHeart, Lock, Mail, ArrowRight, AlertCircle, Shield } from 'lucide-react';
+import { BookHeart, Lock, Mail, ArrowRight, AlertCircle, Shield, Volume2, VolumeX } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    audio.volume = 0.3;
+    void audio.play().catch(() => setMusicPlaying(false));
+
+    return () => {
+      audio.pause();
+      audio.currentTime = 0;
+    };
+  }, []);
+
+  const toggleMusic = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (audio.paused) {
+      try {
+        await audio.play();
+      } catch {
+        setMusicPlaying(false);
+      }
+    } else {
+      audio.pause();
+    }
+  };
 
   const { login, isConfigured } = useAuth();
   const navigate = useNavigate();
@@ -130,6 +160,25 @@ export const Login: React.FC = () => {
         </div>
 
       </div>
+      <audio
+        ref={audioRef}
+        src="/audio/recuerdame.mp3"
+        preload="auto"
+        loop
+        className="hidden"
+        onPlay={() => setMusicPlaying(true)}
+        onPause={() => setMusicPlaying(false)}
+        aria-label="Música de fondo: Recuérdame"
+      />
+      <button
+        type="button"
+        onClick={() => void toggleMusic()}
+        aria-label={musicPlaying ? 'Pausar música de fondo' : 'Reproducir música de fondo'}
+        title={musicPlaying ? 'Pausar música' : 'Reproducir música'}
+        className="fixed bottom-5 right-5 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-stone-200/80 bg-white/75 text-stone-500 shadow-sm backdrop-blur transition hover:bg-white hover:text-amber-800"
+      >
+        {musicPlaying ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+      </button>
     </div>
   );
 };
