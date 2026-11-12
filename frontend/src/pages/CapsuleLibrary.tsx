@@ -1,6 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import { api, CapsuleResponse, StyleProfile } from '../services/api';
-import { BookHeart, Sparkles, Calendar, Tag, ShieldCheck, Heart } from 'lucide-react';
+import { BookHeart, Sparkles, Calendar, Tag, ShieldCheck, Heart, Headphones } from 'lucide-react';
+
+const CapsuleAudio: React.FC<{ capsuleId: string; title: string }> = ({ capsuleId, title }) => {
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioError, setAudioError] = useState('');
+  const [loadingAudio, setLoadingAudio] = useState(false);
+
+  useEffect(() => {
+    return () => { if (audioUrl) URL.revokeObjectURL(audioUrl); };
+  }, [audioUrl]);
+
+  const loadAudio = async () => {
+    setLoadingAudio(true);
+    try {
+      const blob = await api.getCapsuleAudio(capsuleId);
+      setAudioUrl(URL.createObjectURL(blob));
+      setAudioError('');
+    } catch (error) {
+      setAudioError(error instanceof Error ? error.message : 'No se pudo conectar con el servidor.');
+    } finally {
+      setLoadingAudio(false);
+    }
+  };
+
+  if (audioError) return <div className="mt-3 text-xs text-rose-700"><p>No se pudo cargar el audio ({audioError}).</p><button type="button" onClick={() => { setAudioError(''); void loadAudio(); }} disabled={loadingAudio} className="mt-1 underline">Intentar de nuevo</button></div>;
+  if (!audioUrl) return <button type="button" onClick={loadAudio} disabled={loadingAudio} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-stone-50 px-2.5 py-2 text-xs font-medium text-stone-600 disabled:opacity-60"><Headphones className="h-3.5 w-3.5" />{loadingAudio ? 'Cargando audio…' : `Cargar audio: ${title}`}</button>;
+  return <div className="mt-3 rounded-xl bg-stone-50 p-2.5">
+    <p className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium text-stone-600"><Headphones className="h-3.5 w-3.5" />{title}</p>
+    <audio controls preload="none" src={audioUrl} className="h-9 w-full" aria-label={`Reproducir audio: ${title}`} />
+  </div>;
+};
 
 export const CapsuleLibrary: React.FC = () => {
   const [capsules, setCapsules] = useState<CapsuleResponse[]>([]);
@@ -147,6 +177,7 @@ export const CapsuleLibrary: React.FC = () => {
                 <p className="text-xs text-stone-600 font-serif-warm leading-relaxed line-clamp-4 mb-4">
                   "{capsule.content}"
                 </p>
+                {capsule.audio_path && <CapsuleAudio capsuleId={capsule._id} title={capsule.title} />}
               </div>
 
               <div>

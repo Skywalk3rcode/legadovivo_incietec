@@ -1,5 +1,7 @@
 import json
 import logging
+import re
+import unicodedata
 import uuid
 from typing import List, Dict, Any, Optional
 import httpx
@@ -16,6 +18,25 @@ from app.models.mongo_schemas import (
 from app.services.style_analyzer import StyleAnalyzer
 
 logger = logging.getLogger(__name__)
+
+_CHAT_STOP_WORDS = {
+    "que", "como", "cual", "cuando", "donde", "por", "para", "con", "sin", "del", "las", "los",
+    "una", "uno", "unos", "unas", "esto", "esa", "ese", "sus", "mis", "tus", "fue", "hay", "sobre",
+    "recuerdo", "memoria", "cuentame", "dime", "hablame", "mi", "me", "tu", "te", "el", "la", "de", "y",
+}
+
+
+def _title_match_score(query: str, title: str) -> float:
+    def terms(value: str) -> set[str]:
+        normalized = unicodedata.normalize("NFD", value.lower())
+        normalized = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+        return {word for word in re.findall(r"[a-z0-9]+", normalized) if len(word) > 2 and word not in _CHAT_STOP_WORDS}
+
+    query_terms = terms(query)
+    if not query_terms:
+        return 0.0
+    title_terms = terms(title)
+    return len(query_terms & title_terms) / len(query_terms)
 
 
 class AIService:
@@ -160,13 +181,16 @@ class AIService:
 
         # 3. Evaluar relevancia semántica (regla crítica: Cero Alucinación)
         # Nota: en métrica cosine, distancia menor significa mayor similitud.
-        relevant_docs = []
-        sources = []
-
-        for doc, dist, meta in zip(documents, distances, metadatas):
+        matches = []
+        for position, (doc, dist, meta) in enumerate(zip(documents, distances, metadatas)):
             if dist <= distance_threshold:
-                relevant_docs.append(doc)
-                sources.append(meta.get("capsule_id") or meta.get("title"))
+                title_score = _title_match_score(user_message, meta.get("title") or "")
+                matches.append((doc, dist, meta, position, title_score))
+
+        # If the user names a memory, prioritize its title match over broader semantic matches.
+        matches.sort(key=lambda match: (-(match[4] if match[4] >= 0.5 else 0.0), match[1], match[3]))
+        relevant_docs = [match[0] for match in matches]
+        sources = [match[2].get("capsule_id") or match[2].get("title") for match in matches]
 
         available_topics = await cls.get_available_topics(titular_id)
         suggested_topic = available_topics[0] if available_topics else "mis anécdotas de juventud"
@@ -209,6 +233,19 @@ RECUERDOS VERIFICADOS:
             system_prompt=system_prompt,
             user_prompt=user_message
         )
+        if llm_response is None:
+            db = get_mongo_db()
+            best_capsule = None
+            if db is not None and sources:
+                best_capsule = await db.capsules.find_one(
+                    {"_id": sources[0], "titular_id": titular_id},
+                    {"content": 1}
+                )
+            original_text = best_capsule.get("content") if best_capsule else relevant_docs[0]
+            llm_response = (
+                "Ollama no está iniciado, así que te comparto el recuerdo tal como fue guardado:\n\n"
+                f"{original_text}"
+            )
 
         return {
             "response": llm_response,
@@ -218,8 +255,8 @@ RECUERDOS VERIFICADOS:
         }
 
     @classmethod
-    async def _call_ollama(cls, system_prompt: str, user_prompt: str) -> str:
-        """Invoca el LLM de Ollama vía HTTP asíncrono con fallback tolerante a fallos."""
+    async def _call_ollama(cls, system_prompt: str, user_prompt: str) -> Optional[str]:
+        """Invoca Ollama y devuelve None si el servicio no está disponible."""
         endpoint = f"{settings.OLLAMA_HOST}/api/chat"
         payload = {
             "model": settings.OLLAMA_MODEL,
@@ -245,8 +282,5 @@ RECUERDOS VERIFICADOS:
                     return "Hijo querido, tengo un poco de dificultad para responder en este instante, pero recuerda cuánto te quiero."
         except Exception as e:
             logger.warning(f"Ollama no está activo en {settings.OLLAMA_HOST}: {e}")
-            return (
-                f"Mijito lindo, mis recuerdos sobre esto están a salvo en mi legado, pero el motor neuronal de Ollama ({settings.OLLAMA_MODEL}) "
-                "no está iniciado en tu equipo. Ejecuta 'ollama run llama3:8b' en una terminal para escuchar mi respuesta generada con mi propia voz."
-            )
+            return None
 

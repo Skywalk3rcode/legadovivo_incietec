@@ -21,6 +21,9 @@ class MemoryCapsuleInDB(MemoryCapsuleCreate):
     vector_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+    audio_path: Optional[str] = None
+    audio_filename: Optional[str] = None
+    audio_content_type: Optional[str] = None
 
     class Config:
         populate_by_name = True

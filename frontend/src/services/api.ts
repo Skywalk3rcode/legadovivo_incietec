@@ -45,6 +45,9 @@ export interface CapsuleResponse extends CapsulePayload {
   _id: string;
   titular_id: string;
   created_at: string;
+  audio_path?: string | null;
+  audio_filename?: string | null;
+  audio_content_type?: string | null;
 }
 
 export interface ChatResponse {
@@ -353,6 +356,33 @@ export const api = {
     };
     LOCAL_CAPSULES = [newCap, ...LOCAL_CAPSULES];
     return newCap;
+  },
+
+  async uploadCapsuleAudio(capsuleId: string, audio: File | Blob, filename: string): Promise<CapsuleResponse> {
+    const form = new FormData();
+    const uploadFile = audio instanceof File ? audio : new File([audio], filename, { type: audio.type || 'audio/webm' });
+    form.append('audio', uploadFile, filename);
+    const res = await fetch(`${API_BASE}/capsules/${encodeURIComponent(capsuleId)}/audio`, {
+      method: 'POST',
+      headers: getAuthHeader(),
+      body: form
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.detail || 'No se pudo guardar el audio.');
+    }
+    return res.json();
+  },
+
+  async getCapsuleAudio(capsuleId: string): Promise<Blob> {
+    const res = await fetch(`${API_BASE}/capsules/${encodeURIComponent(capsuleId)}/audio`, {
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(`Error ${res.status}${body?.detail ? `: ${body.detail}` : ''}`);
+    }
+    return res.blob();
   },
 
   async getStyleProfile(): Promise<StyleProfile> {

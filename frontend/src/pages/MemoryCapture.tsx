@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { api } from '../services/api';
-import { Feather, Sparkles, CheckCircle2, HeartHandshake, Tag } from 'lucide-react';
+import { Feather, Sparkles, CheckCircle2, HeartHandshake, Tag, Mic, Square, Upload, X } from 'lucide-react';
 
 export const MemoryCapture: React.FC = () => {
   const [title, setTitle] = useState('');
@@ -10,6 +10,13 @@ export const MemoryCapture: React.FC = () => {
   const [tagsInput, setTagsInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [audio, setAudio] = useState<File | Blob | null>(null);
+  const [audioName, setAudioName] = useState('');
+  const [pendingAudioCapsuleId, setPendingAudioCapsuleId] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [error, setError] = useState('');
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   // Detección simple en vivo de modismos para ilustrar el Learning Loop
   const detectedPhrases = ['mijito', 'mi vida', 'oye', 'fíjate', 'sabes qué', 'con todo mi cariño', 'te cuento']
@@ -21,27 +28,77 @@ export const MemoryCapture: React.FC = () => {
 
     setLoading(true);
     setSuccess(false);
+    setError('');
 
     try {
-      const tags = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
-      await api.createCapsule({
-        title,
-        content,
-        category,
-        emotional_tone: emotionalTone,
-        tags: tags.length ? tags : ['familia', 'recuerdos']
-      });
+      let capsuleId = pendingAudioCapsuleId;
+      if (!capsuleId) {
+        const tags = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
+        const created = await api.createCapsule({
+          title,
+          content,
+          category,
+          emotional_tone: emotionalTone,
+          tags: tags.length ? tags : ['familia', 'recuerdos']
+        });
+        capsuleId = created._id;
+        if (audio) setPendingAudioCapsuleId(capsuleId);
+      }
+      if (audio && capsuleId) {
+        const extension = audioName.match(/\.[^.]+$/)?.[0] || '.webm';
+        const safeTitle = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50) || 'recuerdo';
+        const filename = audio instanceof File ? audio.name : `${safeTitle}${extension}`;
+        await api.uploadCapsuleAudio(capsuleId, audio, filename);
+      }
 
       setSuccess(true);
+      setPendingAudioCapsuleId(null);
       setTitle('');
       setContent('');
       setTagsInput('');
+      setAudio(null);
+      setAudioName('');
       setTimeout(() => setSuccess(false), 4000);
     } catch (err) {
       console.error(err);
+      setError(err instanceof Error ? err.message : 'No se pudo guardar el recuerdo.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const startRecording = async () => {
+    setError('');
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setError('Este navegador no permite grabar audio. Puedes seleccionar un archivo.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const recorder = new MediaRecorder(stream);
+      const chunks: BlobPart[] = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.onstop = () => {
+        const type = recorder.mimeType || 'audio/webm';
+        const extension = type.includes('ogg') ? 'ogg' : type.includes('mp4') ? 'm4a' : 'webm';
+        setAudio(new Blob(chunks, { type }));
+        setAudioName(`recuerdo.${extension}`);
+        stream.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+    } catch {
+      setError('No se pudo acceder al micrófono. Revisa el permiso del navegador.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+    setRecording(false);
   };
 
   return (
@@ -73,6 +130,7 @@ export const MemoryCapture: React.FC = () => {
               </div>
             </div>
           )}
+          {error && <div role="alert" className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
@@ -88,6 +146,36 @@ export const MemoryCapture: React.FC = () => {
                 required
               />
             </div>
+
+            <section className="rounded-2xl border border-amber-200/70 bg-amber-50/50 p-4" aria-label="Audio del recuerdo">
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-stone-800">Audio del recuerdo <span className="font-normal text-stone-500">(opcional)</span></h3>
+                <p className="mt-1 text-xs text-stone-500">Graba con el micrófono o selecciona un audio de hasta 25 MB.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {recording ? (
+                  <button type="button" onClick={stopRecording} className="inline-flex items-center gap-2 rounded-xl bg-rose-700 px-3 py-2 text-xs font-medium text-white">
+                    <Square className="h-3.5 w-3.5" /> Detener grabación
+                  </button>
+                ) : (
+                  <button type="button" onClick={startRecording} className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-amber-900">
+                    <Mic className="h-3.5 w-3.5" /> Grabar audio
+                  </button>
+                )}
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700">
+                  <Upload className="h-3.5 w-3.5" /> Subir archivo
+                  <input type="file" accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm,.aac" className="sr-only" disabled={recording} onChange={event => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    const allowed = /\.(webm|ogg|wav|mp3|m4a|aac|mp4)$/i.test(file.name);
+                    if (!allowed || !file.type.startsWith('audio/')) { setError('Selecciona un archivo de audio compatible.'); return; }
+                    if (file.size > 25 * 1024 * 1024) { setError('El audio debe pesar menos de 25 MB.'); return; }
+                    setError(''); setAudio(file); setAudioName(file.name); event.target.value = '';
+                  }} />
+                </label>
+                {audioName && <span className="inline-flex items-center gap-1.5 text-xs text-stone-600"><Mic className="h-3.5 w-3.5" />{audio instanceof File ? audio.name : 'Grabación lista'}<button type="button" aria-label="Quitar audio" onClick={() => { setAudio(null); setAudioName(''); }}><X className="h-3.5 w-3.5" /></button></span>}
+              </div>
+            </section>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>

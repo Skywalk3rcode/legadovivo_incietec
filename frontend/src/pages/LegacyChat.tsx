@@ -21,6 +21,45 @@ interface MessageItem {
   timestamp: string;
   sources?: string[];
   confidence?: number;
+  audioCapsules?: { id: string; title: string }[];
+}
+
+const RecordedMemoryAudio: React.FC<{ capsuleId: string; title: string }> = ({ capsuleId, title }) => {
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [loadingAudio, setLoadingAudio] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
+
+  const loadAudio = async () => {
+    setLoadingAudio(true);
+    setError('');
+    try {
+      const audioBlob = await api.getCapsuleAudio(capsuleId);
+      setAudioUrl(URL.createObjectURL(audioBlob));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo cargar la grabación.');
+    } finally {
+      setLoadingAudio(false);
+    }
+  };
+
+  return <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
+    <p className="mb-2 text-xs font-medium text-amber-950">Grabación original: {title}</p>
+    {audioUrl ? <audio controls preload="none" src={audioUrl} className="h-9 w-full" aria-label={`Reproducir grabación de ${title}`} /> : (
+      <button type="button" onClick={loadAudio} disabled={loadingAudio} className="rounded-lg bg-white px-3 py-2 text-xs font-medium text-amber-900 disabled:opacity-60">
+        {loadingAudio ? 'Cargando grabación…' : 'Reproducir audio'}
+      </button>
+    )}
+    {error && <p role="alert" className="mt-2 text-xs text-rose-700">{error}</p>}
+  </div>;
+};
+
+const STOP_WORDS = new Set(['que', 'como', 'cual', 'cuando', 'donde', 'por', 'para', 'con', 'sin', 'del', 'las', 'los', 'una', 'uno', 'unos', 'unas', 'esto', 'esa', 'ese', 'sus', 'mis', 'tus', 'fue', 'hay', 'sobre', 'recuerdo', 'memoria', 'cuentame', 'dime', 'hablame']);
+
+function searchTerms(value: string): string[] {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .split(/[^a-z0-9]+/).filter(word => word.length > 2 && !STOP_WORDS.has(word));
 }
 
 export const LegacyChat: React.FC = () => {
@@ -136,12 +175,30 @@ export const LegacyChat: React.FC = () => {
 
     try {
       const res: ChatResponse = await api.sendChatMessage(query, activeTitularName, activeTitularId);
+      const capsules = res.sources.length ? await api.getCapsules() : [];
+      const sourceCapsules = res.sources
+        .map(source => capsules.find(capsule => capsule._id === source))
+        .filter((capsule): capsule is NonNullable<typeof capsule> => Boolean(capsule?.audio_path));
+      const queryTerms = new Set(searchTerms(query));
+      const titleMatchedCapsules = sourceCapsules.map(capsule => {
+        const titleTerms = searchTerms(capsule.title);
+        const contentTerms = new Set(searchTerms(capsule.content));
+        const titleCoverage = titleTerms.filter(term => queryTerms.has(term)).length / Math.max(queryTerms.size, 1);
+        const contentCoverage = [...queryTerms].filter(term => contentTerms.has(term)).length / Math.max(queryTerms.size, 1);
+        return { capsule, score: titleCoverage * 2 + contentCoverage * 0.1 };
+      }).filter(match => match.score > 0).sort((a, b) => b.score - a.score);
+      const bestAudioCapsule = titleMatchedCapsules[0]?.capsule || sourceCapsules[0];
+      const audioCapsules = bestAudioCapsule
+        ? [{ id: bestAudioCapsule._id, title: bestAudioCapsule.title }]
+        : [];
+      const sourceTitles = res.sources.map(source => capsules.find(capsule => capsule._id === source)?.title || source);
       const botMsg: MessageItem = {
         id: `bot-${Date.now()}`,
         sender: 'assistant',
         text: res.response,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        sources: res.sources,
+        sources: sourceTitles,
+        audioCapsules,
         confidence: res.confidence
       };
       setMessages(prev => [...prev, botMsg]);
@@ -245,6 +302,10 @@ export const LegacyChat: React.FC = () => {
                   </button>
                 )}
               </div>
+
+              {m.sender === 'assistant' && m.audioCapsules?.map(capsule => (
+                <RecordedMemoryAudio key={capsule.id} capsuleId={capsule.id} title={capsule.title} />
+              ))}
 
               {/* Fuentes y Regla de Negocio */}
               {m.sender === 'assistant' && (

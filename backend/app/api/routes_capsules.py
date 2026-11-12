@@ -1,11 +1,71 @@
+import os
+import uuid
+from pathlib import Path
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from app.api.deps import get_current_titular_id
 from app.models.mongo_schemas import MemoryCapsuleCreate, MemoryCapsuleInDB, StyleProfile
 from app.services.ai_service import AIService
 from app.db.mongodb import get_mongo_db
 
 router = APIRouter()
+MAX_AUDIO_BYTES = 25 * 1024 * 1024
+ALLOWED_AUDIO_TYPES = {"audio/webm", "audio/ogg", "audio/wav", "audio/mpeg", "audio/mp4", "audio/aac", "audio/x-m4a"}
+ALLOWED_AUDIO_EXTENSIONS = {".webm", ".ogg", ".wav", ".mp3", ".m4a", ".aac", ".mp4"}
+
+
+def _audio_root() -> Path:
+    root = Path(os.getenv("AUDIO_STORAGE_DIR", "uploads/audio")).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+async def _find_capsule(db, capsule_id: str, titular_id: str):
+    if db is None:
+        raise HTTPException(status_code=503, detail="La base de datos no está disponible.")
+    return await db.capsules.find_one({"_id": capsule_id, "titular_id": titular_id})
+
+
+@router.post("/{capsule_id}/audio", response_model=MemoryCapsuleInDB)
+async def upload_capsule_audio(
+    capsule_id: str,
+    audio: UploadFile = File(...),
+    titular_id: str = Depends(get_current_titular_id),
+):
+    db = get_mongo_db()
+    capsule = await _find_capsule(db, capsule_id, titular_id)
+    if not capsule:
+        raise HTTPException(status_code=404, detail="No se encontró la cápsula.")
+
+    extension = Path(audio.filename or "").suffix.lower()
+    content_type = (audio.content_type or "").split(";")[0].lower()
+    if content_type not in ALLOWED_AUDIO_TYPES or extension not in ALLOWED_AUDIO_EXTENSIONS:
+        raise HTTPException(status_code=415, detail="Formato de audio no compatible.")
+
+    data = await audio.read(MAX_AUDIO_BYTES + 1)
+    if not data or len(data) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="El audio debe pesar menos de 25 MB.")
+
+    filename = f"{uuid.uuid4().hex}{extension}"
+    ( _audio_root() / filename ).write_bytes(data)
+    await db.capsules.update_one(
+        {"_id": capsule_id, "titular_id": titular_id},
+        {"$set": {"audio_path": filename, "audio_filename": Path(audio.filename or filename).name, "audio_content_type": content_type}},
+    )
+    updated = await db.capsules.find_one({"_id": capsule_id, "titular_id": titular_id})
+    return MemoryCapsuleInDB(**updated)
+
+
+@router.get("/{capsule_id}/audio")
+async def get_capsule_audio(capsule_id: str, titular_id: str = Depends(get_current_titular_id)):
+    capsule = await _find_capsule(get_mongo_db(), capsule_id, titular_id)
+    if not capsule or not capsule.get("audio_path"):
+        raise HTTPException(status_code=404, detail="Esta cápsula no tiene audio.")
+    path = (_audio_root() / Path(capsule["audio_path"]).name).resolve()
+    if path.parent != _audio_root():
+        raise HTTPException(status_code=404, detail="Audio no encontrado.")
+    return FileResponse(path, media_type=capsule.get("audio_content_type") or "application/octet-stream", filename=capsule.get("audio_filename"))
 
 
 @router.post("/", response_model=MemoryCapsuleInDB, status_code=status.HTTP_201_CREATED)
